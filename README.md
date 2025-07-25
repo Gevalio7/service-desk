@@ -1,244 +1,390 @@
 # Service Desk
 
-Система Service Desk для обработки заявок и инцидентов с SLA-трекингом, интеграцией с Telegram и современным UI/UX.
+Полнофункциональная система Service Desk для обработки заявок и инцидентов с SLA-трекингом, интеграцией с Telegram и современным UI/UX.
+
+![Service Desk](https://via.placeholder.com/800x400?text=Service+Desk)
 
 ## Содержание
 
-- [Возможности](#возможности)
+- [Описание](#описание)
 - [Архитектура](#архитектура)
+- [Технологии](#технологии)
 - [Требования](#требования)
-- [Установка](#установка)
-- [Настройка](#настройка)
-- [Запуск](#запуск)
-- [Тестирование](#тестирование)
-- [Мониторинг](#мониторинг)
-- [API Документация](#api-документация)
+- [Установка и запуск](#установка-и-запуск)
+- [Безопасность](#безопасность)
 - [Структура проекта](#структура-проекта)
+- [Лицензия](#лицензия)
 
-## Возможности
+## Описание
 
-### Telegram-бот для приёма заявок
-- Создание заявок через Telegram
-- Поддержка вложений (фото, документы)
-- Кнопки для быстрого выбора категории и приоритета
-- Уведомления об изменении статуса заявок
+Service Desk - это комплексное решение для управления заявками и инцидентами, которое позволяет организациям эффективно обрабатывать запросы пользователей, отслеживать SLA и управлять рабочими процессами. Система включает в себя:
 
-### Backend (API + БД)
-- Хранение заявок с полями: ID, Тема, Описание, Категория, Приоритет, Статус, SLA срок, Клиент, Дата создания
-- Расчёт SLA в зависимости от приоритета
-- Автоматические уведомления при нарушении SLA
-- Фильтрация заявок по различным параметрам
+- **Backend API**: RESTful API для обработки всех операций с данными
+- **Frontend Dashboard**: Современный интерфейс для администраторов и агентов
+- **Telegram Bot**: Интеграция с Telegram для создания заявок и получения уведомлений
+
+### Ключевые возможности
+
+- Создание и управление заявками
+- Отслеживание SLA с автоматическими уведомлениями
+- Ролевая модель доступа (admin, agent, client)
+- Интеграция с Telegram
 - Экспорт данных в CSV
-
-### Frontend (React + Dashboard)
-- Главный дашборд с метриками
-- Интерактивные графики
-- Таблица заявок с сортировкой и фильтрацией
-- Детальная информация о заявках
-- Темная и светлая темы оформления
+- Мониторинг и логирование
+- Документация API через Swagger
 
 ## Архитектура
 
-Система состоит из трех основных компонентов:
+Система построена на основе микросервисной архитектуры и состоит из трех основных компонентов:
 
-```
-┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
-│                 │      │                 │      │                 │
-│  Telegram Bot   │◄────►│   Backend API   │◄────►│    Frontend     │
-│                 │      │                 │      │    Dashboard    │
-└─────────────────┘      └────────┬────────┘      └─────────────────┘
-                                  │
-                                  ▼
-                         ┌─────────────────┐
-                         │                 │
-                         │   PostgreSQL    │
-                         │   Database      │
-                         │                 │
-                         └─────────────────┘
-```
+1. **Backend API** (Node.js/Express) - обрабатывает бизнес-логику и взаимодействие с базой данных
+2. **Frontend Dashboard** (React) - предоставляет пользовательский интерфейс для работы с системой
+3. **Telegram Bot** (Node.js) - обеспечивает интеграцию с Telegram
+
+## Технологии
+
+### Backend
+- Node.js
+- Express
+- PostgreSQL
+- Sequelize ORM
+- JWT для аутентификации
+- Winston для логирования
+- Prometheus для мониторинга
+- Jest для тестирования
+
+### Frontend
+- React
+- Material-UI
+- React Router
+- Axios
+- ApexCharts
+- Formik и Yup
+
+### Telegram Bot
+- Telegraf.js
+- Axios
+- Winston
 
 ## Требования
 
-- Node.js 16+
-- PostgreSQL 13+
-- Telegram Bot Token (для интеграции с Telegram)
+- Node.js (v14.x или выше)
+- PostgreSQL (v12.x или выше)
+- npm (v6.x или выше)
+- Токен Telegram бота (получить у @BotFather)
 
-## Установка
+## Установка и запуск
 
-1. Клонировать репозиторий:
+### Шаг 1: Клонирование репозитория
+
 ```bash
-git clone https://github.com/your-username/service-desk.git
+git clone https://github.com/username/service-desk.git
 cd service-desk
 ```
 
-2. Установить зависимости для backend:
+### Шаг 2: Настройка базы данных
+
+```bash
+# Установка PostgreSQL (если не установлен)
+sudo apt update
+sudo apt install postgresql postgresql-contrib
+
+# Запуск PostgreSQL
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+
+# Вход в PostgreSQL
+sudo -u postgres psql
+
+# Создание базы данных и пользователя
+CREATE DATABASE servicedesk;
+CREATE USER servicedesk_user WITH ENCRYPTED PASSWORD 'your_password';
+GRANT ALL PRIVILEGES ON DATABASE servicedesk TO servicedesk_user;
+\q
+```
+
+### Шаг 3: Настройка переменных окружения
+
+Создайте файлы `.env` в каждой директории компонентов:
+
+#### Backend (.env в директории service-desk/backend)
+
 ```bash
 cd backend
-npm install
+cat > .env << EOF
+PORT=3000
+DB_NAME=servicedesk
+DB_USER=servicedesk_user
+DB_PASSWORD=your_password
+DB_HOST=localhost
+NODE_ENV=development
+JWT_SECRET=$(openssl rand -hex 32)
+EOF
 ```
 
-3. Установить зависимости для frontend:
+#### Telegram Bot (.env в директории service-desk/telegram-bot)
+
 ```bash
+cd ../telegram-bot
+cat > .env << EOF
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+API_URL=http://localhost:3000/api
+API_TOKEN=your_api_token
+EOF
+```
+
+### Шаг 4: Установка зависимостей
+
+```bash
+# Backend
+cd ../backend
+npm install
+
+# Frontend
 cd ../frontend
 npm install
-```
 
-4. Установить зависимости для Telegram-бота:
-```bash
+# Telegram Bot
 cd ../telegram-bot
 npm install
 ```
 
-## Настройка
+### Шаг 5: Запуск компонентов
 
-### Backend
-
-1. Создать файл `.env` в директории `backend`:
-```
-# Server
-PORT=3000
-NODE_ENV=development
-
-# Database
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=servicedesk
-DB_USER=postgres
-DB_PASSWORD=postgres
-
-# JWT
-JWT_SECRET=your-secret-key
-JWT_EXPIRES_IN=24h
-
-# Logging
-LOG_LEVEL=info
-```
-
-2. Создать базу данных PostgreSQL:
-```bash
-createdb servicedesk
-```
-
-### Telegram Bot
-
-1. Создать файл `.env` в директории `telegram-bot`:
-```
-# Telegram
-TELEGRAM_BOT_TOKEN=your-telegram-bot-token
-
-# API
-API_URL=http://localhost:3000/api
-API_TOKEN=your-api-token
-```
-
-2. Получить токен для Telegram-бота у [@BotFather](https://t.me/BotFather)
-
-## Запуск
-
-### Backend
+#### Backend API
 
 ```bash
-cd backend
+cd ../backend
 npm run dev
 ```
 
-Backend API будет доступен по адресу: http://localhost:3000
+При первом запуске будет создана структура базы данных. Сервер запустится на порту 3000 (или указанном в .env).
 
-### Frontend
+#### Frontend Dashboard
 
 ```bash
-cd frontend
+cd ../frontend
 npm start
 ```
 
-Frontend будет доступен по адресу: http://localhost:3001
+Frontend запустится на порту 3001 и будет доступен по адресу http://localhost:3001
 
-### Telegram Bot
+#### Telegram Bot
 
 ```bash
-cd telegram-bot
+cd ../telegram-bot
 npm run dev
 ```
 
-## Тестирование
+### Шаг 6: Настройка для production
 
-### Backend
-
-```bash
-cd backend
-npm test
-```
-
-Для запуска тестов с отчетом о покрытии:
-```bash
-npm run test:coverage
-```
-
-### Frontend
+Для запуска в production режиме рекомендуется использовать PM2:
 
 ```bash
-cd frontend
-npm test
+# Установка PM2
+sudo npm install -g pm2
+
+# Запуск компонентов через PM2
+cd ../backend
+pm2 start src/app.js --name "service-desk-backend"
+
+cd ../telegram-bot
+pm2 start src/bot.js --name "service-desk-telegram-bot"
+
+# Сохранение конфигурации PM2
+pm2 save
+
+# Настройка автозапуска PM2
+pm2 startup
 ```
 
-## Мониторинг
+Для frontend рекомендуется собрать статические файлы и раздавать их через Nginx:
 
-Система включает в себя мониторинг с использованием Prometheus. Метрики доступны по адресу:
-```
-http://localhost:3000/metrics
+```bash
+cd ../frontend
+npm run build
+
+# Установка Nginx
+sudo apt install nginx
+
+# Настройка Nginx
+sudo nano /etc/nginx/sites-available/service-desk
 ```
 
-Основные метрики:
-- `http_request_duration_seconds` - время выполнения HTTP-запросов
-- `http_requests_total` - общее количество HTTP-запросов
-- `active_tickets` - количество активных заявок в системе
-- `sla_breaches_total` - общее количество нарушений SLA
+Содержимое конфигурации Nginx:
 
-## API Документация
+```nginx
+server {
+    listen 80;
+    server_name your_domain.com;
 
-Swagger документация доступна по адресу:
+    location / {
+        root /path/to/service-desk/frontend/build;
+        index index.html;
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api {
+        proxy_pass http://localhost:3000/api;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
 ```
-http://localhost:3000/api-docs
+
+Активация конфигурации Nginx:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/service-desk /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
 ```
+
+## Безопасность
+
+### Проверка уязвимостей
+
+Перед запуском в production среде рекомендуется выполнить проверку уязвимостей:
+
+```bash
+# Проверка уязвимостей в зависимостях
+cd ../backend
+npm audit
+
+cd ../frontend
+npm audit
+
+cd ../telegram-bot
+npm audit
+
+# Исправление уязвимостей (если возможно)
+npm audit fix
+```
+
+### Рекомендации по безопасности
+
+1. **Защита переменных окружения**:
+   - Используйте сложные пароли и секретные ключи
+   - Не храните .env файлы в репозитории
+   - Ограничьте доступ к .env файлам на сервере
+
+2. **Настройка брандмауэра**:
+   ```bash
+   # Установка и настройка UFW
+   sudo apt install ufw
+   sudo ufw default deny incoming
+   sudo ufw default allow outgoing
+   sudo ufw allow ssh
+   sudo ufw allow http
+   sudo ufw allow https
+   sudo ufw enable
+   ```
+
+3. **Настройка HTTPS**:
+   ```bash
+   # Установка Certbot для Let's Encrypt
+   sudo apt install certbot python3-certbot-nginx
+   sudo certbot --nginx -d your_domain.com
+   ```
+
+4. **Регулярное обновление системы**:
+   ```bash
+   sudo apt update
+   sudo apt upgrade
+   ```
+
+5. **Настройка резервного копирования базы данных**:
+   ```bash
+   # Создание скрипта для резервного копирования
+   cat > backup.sh << EOF
+   #!/bin/bash
+   BACKUP_DIR="/path/to/backups"
+   TIMESTAMP=\$(date +"%Y%m%d_%H%M%S")
+   BACKUP_FILE="\$BACKUP_DIR/servicedesk_\$TIMESTAMP.sql"
+   
+   # Создание резервной копии
+   pg_dump -U servicedesk_user -d servicedesk > \$BACKUP_FILE
+   
+   # Сжатие файла
+   gzip \$BACKUP_FILE
+   
+   # Удаление старых резервных копий (старше 30 дней)
+   find \$BACKUP_DIR -name "servicedesk_*.sql.gz" -type f -mtime +30 -delete
+   EOF
+   
+   chmod +x backup.sh
+   
+   # Добавление задачи в crontab
+   (crontab -l 2>/dev/null; echo "0 2 * * * /path/to/backup.sh") | crontab -
+   ```
+
+6. **Ограничение доступа к API**:
+   - Используйте rate limiting для предотвращения DDoS атак
+   - Настройте CORS для ограничения доступа к API
+   - Используйте валидацию входных данных
 
 ## Структура проекта
 
 ```
 service-desk/
-├── backend/           # Express.js API сервер
+├── backend/                # Backend API
 │   ├── src/
-│   │   ├── controllers/  # Контроллеры API
-│   │   ├── models/       # Модели данных
-│   │   ├── routes/       # Маршруты API
-│   │   ├── services/     # Сервисы (SLA, уведомления)
-│   │   ├── middleware/   # Middleware (аутентификация)
-│   │   ├── utils/        # Утилиты (логирование, метрики)
-│   │   └── app.js        # Основной файл приложения
-│   ├── config/           # Конфигурация
-│   ├── tests/            # Тесты
-│   └── package.json
-├── frontend/          # React приложение
-│   ├── public/
+│   │   ├── config/         # Конфигурация
+│   │   ├── controllers/    # Контроллеры
+│   │   ├── middleware/     # Middleware
+│   │   ├── models/         # Модели данных
+│   │   ├── routes/         # Маршруты API
+│   │   ├── services/       # Сервисы
+│   │   ├── tests/          # Тесты
+│   │   ├── utils/          # Утилиты
+│   │   └── app.js          # Точка входа
+│   ├── .env                # Переменные окружения
+│   └── package.json        # Зависимости
+├── frontend/               # Frontend Dashboard
+│   ├── public/             # Статические файлы
 │   ├── src/
-│   │   ├── components/   # Компоненты React
-│   │   ├── contexts/     # Контексты (аутентификация)
-│   │   ├── layouts/      # Макеты страниц
-│   │   ├── pages/        # Страницы приложения
-│   │   └── App.js        # Основной компонент
-│   └── package.json
-└── telegram-bot/      # Telegram бот
+│   │   ├── components/     # Компоненты
+│   │   ├── contexts/       # Контексты
+│   │   ├── layouts/        # Макеты
+│   │   ├── pages/          # Страницы
+│   │   ├── services/       # Сервисы API
+│   │   ├── utils/          # Утилиты
+│   │   ├── App.js          # Главный компонент
+│   │   └── index.js        # Точка входа
+│   └── package.json        # Зависимости
+└── telegram-bot/           # Telegram Bot
     ├── src/
-    │   ├── handlers/     # Обработчики команд
-    │   ├── services/     # Сервисы
-    │   └── bot.js        # Основной файл бота
-    └── package.json
+    │   ├── handlers/       # Обработчики команд
+    │   ├── services/       # Сервисы
+    │   ├── utils/          # Утилиты
+    │   └── bot.js          # Точка входа
+    ├── .env                # Переменные окружения
+    └── package.json        # Зависимости
 ```
 
-## SLA конфигурация
+## Лицензия
 
-| Приоритет | Описание | Время решения | Время первого ответа |
-|-----------|----------|---------------|---------------------|
-| P1 | Критический | 4 часа | 30 минут |
-| P2 | Высокий | 8 часов | 2 часа |
-| P3 | Средний | 24 часа | 4 часа |
-| P4 | Низкий | 48 часов | 8 часов |
+MIT License
+
+Copyright (c) 2025 Service Desk
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
