@@ -1,0 +1,126 @@
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Global styles */
+.clickable {
+  cursor: pointer;
+}
+
+.text-ellipsis {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Animation for notifications */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.notification-animation {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Status colors */
+.status-new {
+  background-color: #2196f3;
+  color: white;
+}
+
+.status-assigned {
+  background-color: #64b5f6;
+  color: white;
+}
+
+.status-in-progress {
+  background-color: #ff9800;
+  color: white;
+}
+
+.status-on-hold {
+  background-color: #ffb74d;
+  color: white;
+}
+
+.status-resolved {
+  background-color: #4caf50;
+  color: white;
+}
+
+.status-closed {
+  background-color: #388e3c;
+  color: white;
+}
+
+/* Priority colors */
+.priority-p1 {
+  background-color: #f44336;
+  color: white;
+}
+
+.priority-p2 {
+  background-color: #ef5350;
+  color: white;
+}
+
+.priority-p3 {
+  background-color: #ff9800;
+  color: white;
+}
+
+.priority-p4 {
+  background-color: #4caf50;
+  color: white;
+}
+
+/* SLA status */
+.sla-breach {
+  color: #f44336;
+  font-weight: bold;
+}
+
+.sla-warning {
+  color: #ff9800;
+  font-weight: bold;
+}
+
+.sla-ok {
+  color: #4caf50;
+}
