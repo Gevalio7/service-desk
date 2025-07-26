@@ -1,35 +1,66 @@
 const { Op } = require('sequelize');
 const moment = require('moment');
-const { 
-  Ticket, 
-  User, 
-  Comment, 
-  Attachment, 
-  TicketHistory 
+const { validationResult } = require('express-validator');
+const {
+  Ticket,
+  User,
+  Comment,
+  Attachment,
+  TicketHistory
 } = require('../models');
 const { logger } = require('../../config/database');
+const notificationService = require('../services/notificationService');
 
 /**
  * Create a new ticket
  */
 exports.createTicket = async (req, res) => {
   try {
-    const { 
-      title, 
-      description, 
-      category, 
-      priority, 
+    logger.info('🎫 СОЗДАНИЕ ЗАЯВКИ - Начало процесса', {
+      userId: req.user?.id,
+      userEmail: req.user?.email,
+      requestBody: req.body
+    });
+
+    const {
+      title,
+      description,
+      category,
+      priority,
       tags,
       source,
       telegramMessageId
     } = req.body;
     
+    // Валидация обязательных полей
+    if (!title || !description) {
+      logger.error('❌ СОЗДАНИЕ ЗАЯВКИ - Отсутствуют обязательные поля', {
+        title: !!title,
+        description: !!description,
+        userId: req.user?.id
+      });
+      return res.status(400).json({
+        message: 'Title and description are required',
+        missingFields: {
+          title: !title,
+          description: !description
+        }
+      });
+    }
+
+    logger.info('✅ СОЗДАНИЕ ЗАЯВКИ - Валидация пройдена, создаем заявку', {
+      title,
+      category: category || 'request',
+      priority: priority || 'P3',
+      userId: req.user.id
+    });
+    
     // Create ticket
     const ticket = await Ticket.create({
       title,
       description,
-      category: category || 'request',
-      priority: priority || 'P3',
+      category: category || 'general',
+      priority: priority || 'medium',
       status: 'new',
       tags: tags || [],
       source: source || 'web',
@@ -37,6 +68,14 @@ exports.createTicket = async (req, res) => {
       createdById: req.user.id
     });
     
+    logger.info('🎉 СОЗДАНИЕ ЗАЯВКИ - Заявка успешно создана', {
+      ticketId: ticket.id,
+      title: ticket.title,
+      status: ticket.status,
+      createdById: ticket.createdById,
+      userId: req.user.id
+    });
+
     // Create ticket history entry - temporarily disabled due to DB schema issues
     // await TicketHistory.create({
     //   ticketId: ticket.id,
@@ -46,13 +85,32 @@ exports.createTicket = async (req, res) => {
     //   action: 'create'
     // });
     
+    // Send new ticket notification
+    try {
+      await notificationService.sendNewTicketNotification(ticket);
+      logger.info('📧 СОЗДАНИЕ ЗАЯВКИ - Уведомления отправлены', {
+        ticketId: ticket.id
+      });
+    } catch (notificationError) {
+      logger.error('❌ СОЗДАНИЕ ЗАЯВКИ - Ошибка отправки уведомлений:', {
+        ticketId: ticket.id,
+        error: notificationError.message
+      });
+      // Не прерываем процесс создания заявки из-за ошибки уведомлений
+    }
+    
     res.status(201).json({
       message: 'Ticket created successfully',
       ticket
     });
   } catch (error) {
-    logger.error('Error in createTicket controller:', error);
-    res.status(500).json({ 
+    logger.error('❌ СОЗДАНИЕ ЗАЯВКИ - Критическая ошибка:', {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user?.id,
+      requestBody: req.body
+    });
+    res.status(500).json({
       message: 'Error creating ticket',
       error: process.env.NODE_ENV === 'production' ? {} : error.message
     });
@@ -199,6 +257,12 @@ exports.getTicketById = async (req, res) => {
   try {
     const { id } = req.params;
     
+    logger.info('🔍 ПОЛУЧЕНИЕ ТИКЕТА - Запрос деталей тикета', {
+      ticketId: id,
+      userId: req.user?.id,
+      userRole: req.user?.role
+    });
+    
     // Get ticket with related data
     const ticket = await Ticket.findByPk(id, {
       include: [
@@ -222,7 +286,8 @@ exports.getTicketById = async (req, res) => {
             {
               model: Attachment
             }
-          ]
+          ],
+          order: [['createdAt', 'ASC']]
         },
         {
           model: Attachment
@@ -234,24 +299,48 @@ exports.getTicketById = async (req, res) => {
               model: User,
               attributes: ['id', 'username', 'firstName', 'lastName']
             }
-          ]
+          ],
+          order: [['createdAt', 'DESC']]
         }
       ]
     });
     
     if (!ticket) {
+      logger.warn('❌ ПОЛУЧЕНИЕ ТИКЕТА - Тикет не найден', {
+        ticketId: id,
+        userId: req.user?.id
+      });
       return res.status(404).json({ message: 'Ticket not found' });
     }
     
     // Role-based access control
     if (req.user.role === 'client' && ticket.createdById !== req.user.id) {
+      logger.warn('❌ ПОЛУЧЕНИЕ ТИКЕТА - Доступ запрещен', {
+        ticketId: id,
+        userId: req.user?.id,
+        userRole: req.user?.role,
+        ticketCreatedById: ticket.createdById
+      });
       return res.status(403).json({ message: 'Access denied' });
     }
     
+    logger.info('✅ ПОЛУЧЕНИЕ ТИКЕТА - Тикет успешно найден', {
+      ticketId: ticket.id,
+      title: ticket.title,
+      status: ticket.status,
+      commentsCount: ticket.Comments?.length || 0,
+      userId: req.user?.id
+    });
+    
     res.status(200).json({ ticket });
   } catch (error) {
-    logger.error('Error in getTicketById controller:', error);
-    res.status(500).json({ 
+    logger.error('❌ ПОЛУЧЕНИЕ ТИКЕТА - Ошибка получения тикета:', {
+      ticketId: req.params.id,
+      userId: req.user?.id,
+      error: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({
       message: 'Error getting ticket',
       error: process.env.NODE_ENV === 'production' ? {} : error.message
     });
@@ -618,6 +707,318 @@ exports.exportTickets = async (req, res) => {
     logger.error('Error in exportTickets controller:', error);
     res.status(500).json({ 
       message: 'Error exporting tickets',
+      error: process.env.NODE_ENV === 'production' ? {} : error.message
+    });
+  }
+};
+
+/**
+ * Upload attachments to ticket
+ */
+exports.uploadAttachments = async (req, res) => {
+  try {
+    // Check validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      logger.error('❌ ЗАГРУЗКА ФАЙЛОВ - Ошибки валидации', {
+        errors: errors.array(),
+        ticketId: req.params.id,
+        userId: req.user?.id
+      });
+      return res.status(400).json({
+        message: 'Validation errors',
+        errors: errors.array()
+      });
+    }
+    
+    const { id } = req.params;
+    const files = req.files;
+    
+    logger.info('📎 ЗАГРУЗКА ФАЙЛОВ - Получен запрос', {
+      ticketId: id,
+      ticketIdType: typeof id,
+      filesCount: files ? files.length : 0,
+      userId: req.user?.id,
+      userRole: req.user?.role
+    });
+    
+    if (!files || files.length === 0) {
+      logger.warn('❌ ЗАГРУЗКА ФАЙЛОВ - Файлы не переданы', {
+        ticketId: id,
+        userId: req.user?.id
+      });
+      return res.status(400).json({ message: 'No files uploaded' });
+    }
+    
+    // Validate ticket ID format
+    if (!id || id.trim() === '') {
+      logger.error('❌ ЗАГРУЗКА ФАЙЛОВ - Некорректный ID тикета', {
+        ticketId: id,
+        userId: req.user?.id
+      });
+      return res.status(400).json({ message: 'Invalid ticket ID' });
+    }
+    
+    // Get ticket
+    logger.info('🔍 ЗАГРУЗКА ФАЙЛОВ - Поиск тикета в базе данных', {
+      ticketId: id,
+      userId: req.user?.id
+    });
+    
+    const ticket = await Ticket.findByPk(id);
+    
+    if (!ticket) {
+      logger.error('❌ ЗАГРУЗКА ФАЙЛОВ - Тикет не найден в базе данных', {
+        ticketId: id,
+        userId: req.user?.id,
+        searchedId: id,
+        searchedIdType: typeof id
+      });
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+    
+    logger.info('✅ ЗАГРУЗКА ФАЙЛОВ - Тикет найден', {
+      ticketId: ticket.id,
+      ticketTitle: ticket.title,
+      ticketStatus: ticket.status,
+      createdById: ticket.createdById,
+      userId: req.user?.id
+    });
+    
+    // Role-based access control
+    if (req.user.role === 'client' && ticket.createdById !== req.user.id) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    logger.info('📎 ЗАГРУЗКА ФАЙЛОВ - Начало загрузки', {
+      ticketId: id,
+      filesCount: files.length,
+      userId: req.user.id
+    });
+    
+    // Ensure upload directory exists
+    const fs = require('fs');
+    const path = require('path');
+    const uploadDir = path.join(process.cwd(), 'uploads', 'attachments');
+    
+    if (!fs.existsSync(uploadDir)) {
+      logger.info('📁 ЗАГРУЗКА ФАЙЛОВ - Создание директории для загрузок', {
+        uploadDir: uploadDir
+      });
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    
+    // Create attachment records
+    const attachments = [];
+    for (const file of files) {
+      // Verify file exists on disk
+      if (!fs.existsSync(file.path)) {
+        logger.error('❌ ЗАГРУЗКА ФАЙЛОВ - Файл не найден на диске', {
+          filename: file.filename,
+          path: file.path,
+          originalName: file.originalname
+        });
+        continue; // Skip this file
+      }
+      
+      const attachment = await Attachment.create({
+        filename: file.filename,
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        size: file.size,
+        path: file.path,
+        ticketId: ticket.id,
+        isPublic: true
+      });
+      
+      attachments.push(attachment);
+      
+      logger.info('📎 ЗАГРУЗКА ФАЙЛОВ - Файл сохранен', {
+        attachmentId: attachment.id,
+        originalName: file.originalname,
+        filename: file.filename,
+        size: file.size,
+        path: file.path
+      });
+    }
+    
+    logger.info('✅ ЗАГРУЗКА ФАЙЛОВ - Все файлы успешно загружены', {
+      ticketId: id,
+      attachmentsCount: attachments.length,
+      userId: req.user.id
+    });
+    
+    res.status(201).json({
+      message: 'Files uploaded successfully',
+      attachments
+    });
+  } catch (error) {
+    logger.error('❌ ЗАГРУЗКА ФАЙЛОВ - Ошибка загрузки файлов:', {
+      ticketId: req.params.id,
+      userId: req.user?.id,
+      error: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({
+      message: 'Error uploading files',
+      error: process.env.NODE_ENV === 'production' ? {} : error.message
+    });
+  }
+};
+
+/**
+ * Download attachment
+ */
+exports.downloadAttachment = async (req, res) => {
+  try {
+    const { id, attachmentId } = req.params;
+    
+    // Get ticket
+    const ticket = await Ticket.findByPk(id);
+    
+    if (!ticket) {
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+    
+    // Role-based access control
+    if (req.user.role === 'client' && ticket.createdById !== req.user.id) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    // Get attachment
+    const attachment = await Attachment.findOne({
+      where: {
+        id: attachmentId,
+        ticketId: id
+      }
+    });
+    
+    if (!attachment) {
+      return res.status(404).json({ message: 'Attachment not found' });
+    }
+    
+    logger.info('📥 СКАЧИВАНИЕ ФАЙЛА - Запрос на скачивание', {
+      ticketId: id,
+      attachmentId: attachmentId,
+      filename: attachment.originalName,
+      userId: req.user.id
+    });
+    
+    const fs = require('fs');
+    const path = require('path');
+    
+    // Check if file exists
+    if (!fs.existsSync(attachment.path)) {
+      logger.error('❌ СКАЧИВАНИЕ ФАЙЛА - Файл не найден на диске', {
+        attachmentId: attachmentId,
+        path: attachment.path
+      });
+      return res.status(404).json({ message: 'File not found on disk' });
+    }
+    
+    // Set headers for file download
+    res.setHeader('Content-Disposition', `attachment; filename="${attachment.originalName}"`);
+    res.setHeader('Content-Type', attachment.mimeType);
+    res.setHeader('Content-Length', attachment.size);
+    
+    // Stream file to response
+    const fileStream = fs.createReadStream(attachment.path);
+    fileStream.pipe(res);
+    
+    logger.info('✅ СКАЧИВАНИЕ ФАЙЛА - Файл успешно отправлен', {
+      ticketId: id,
+      attachmentId: attachmentId,
+      filename: attachment.originalName,
+      userId: req.user.id
+    });
+    
+  } catch (error) {
+    logger.error('❌ СКАЧИВАНИЕ ФАЙЛА - Ошибка скачивания файла:', {
+      ticketId: req.params.id,
+      attachmentId: req.params.attachmentId,
+      userId: req.user?.id,
+      error: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({
+      message: 'Error downloading file',
+      error: process.env.NODE_ENV === 'production' ? {} : error.message
+    });
+  }
+};
+
+/**
+ * Delete attachment
+ */
+exports.deleteAttachment = async (req, res) => {
+  try {
+    const { id, attachmentId } = req.params;
+    
+    // Get ticket
+    const ticket = await Ticket.findByPk(id);
+    
+    if (!ticket) {
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+    
+    // Role-based access control
+    if (req.user.role === 'client' && ticket.createdById !== req.user.id) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    // Get attachment
+    const attachment = await Attachment.findOne({
+      where: {
+        id: attachmentId,
+        ticketId: id
+      }
+    });
+    
+    if (!attachment) {
+      return res.status(404).json({ message: 'Attachment not found' });
+    }
+    
+    logger.info('🗑️ УДАЛЕНИЕ ФАЙЛА - Запрос на удаление', {
+      ticketId: id,
+      attachmentId: attachmentId,
+      filename: attachment.originalName,
+      userId: req.user.id
+    });
+    
+    const fs = require('fs');
+    
+    // Delete file from disk
+    if (fs.existsSync(attachment.path)) {
+      fs.unlinkSync(attachment.path);
+      logger.info('🗑️ УДАЛЕНИЕ ФАЙЛА - Файл удален с диска', {
+        path: attachment.path
+      });
+    }
+    
+    // Delete attachment record
+    await attachment.destroy();
+    
+    logger.info('✅ УДАЛЕНИЕ ФАЙЛА - Файл успешно удален', {
+      ticketId: id,
+      attachmentId: attachmentId,
+      filename: attachment.originalName,
+      userId: req.user.id
+    });
+    
+    res.status(200).json({
+      message: 'Attachment deleted successfully'
+    });
+    
+  } catch (error) {
+    logger.error('❌ УДАЛЕНИЕ ФАЙЛА - Ошибка удаления файла:', {
+      ticketId: req.params.id,
+      attachmentId: req.params.attachmentId,
+      userId: req.user?.id,
+      error: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({
+      message: 'Error deleting attachment',
       error: process.env.NODE_ENV === 'production' ? {} : error.message
     });
   }

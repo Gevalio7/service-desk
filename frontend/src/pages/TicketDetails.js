@@ -25,7 +25,10 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Alert
+  Alert,
+  Modal,
+  Backdrop,
+  Fade
 } from '@mui/material';
 import {
   ArrowBack,
@@ -34,9 +37,16 @@ import {
   AttachFile,
   Person,
   Schedule,
-  PriorityHigh
+  PriorityHigh,
+  Download,
+  Delete,
+  InsertDriveFile,
+  Image,
+  PictureAsPdf,
+  Description
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
+import axios from '../utils/axios';
 
 const TicketDetails = () => {
   const { id } = useParams();
@@ -45,11 +55,13 @@ const TicketDetails = () => {
   
   const [ticket, setTicket] = useState(null);
   const [comments, setComments] = useState([]);
+  const [attachments, setAttachments] = useState([]);
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editedTicket, setEditedTicket] = useState({});
+  const [uploadingFiles, setUploadingFiles] = useState(false);
 
   useEffect(() => {
     fetchTicketDetails();
@@ -58,46 +70,102 @@ const TicketDetails = () => {
   const fetchTicketDetails = async () => {
     try {
       setLoading(true);
-      // Здесь будет API вызов для получения деталей тикета
-      // Пока используем заглушку
-      const mockTicket = {
-        id: id,
-        title: 'Проблема с входом в систему',
-        description: 'Пользователь не может войти в систему после обновления пароля',
-        status: 'open',
-        priority: 'high',
-        category: 'technical',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        assignedTo: {
-          id: 1,
-          name: 'Иван Петров',
-          email: 'ivan@example.com'
-        },
-        reporter: {
-          id: 2,
-          name: 'Мария Сидорова',
-          email: 'maria@example.com'
-        }
+      setError(null);
+      
+      console.log('Загрузка деталей тикета:', id);
+      
+      // Используем axios для получения деталей тикета
+      const response = await axios.get(`/api/tickets/${id}`);
+      
+      console.log('Ответ сервера:', response.data);
+      
+      const ticketData = response.data.ticket;
+      
+      // Преобразуем данные в нужный формат
+      const formattedTicket = {
+        id: ticketData.id,
+        ticketNumber: ticketData.ticketNumber,
+        title: ticketData.title,
+        description: ticketData.description,
+        status: ticketData.status,
+        priority: ticketData.priority,
+        category: ticketData.category,
+        createdAt: ticketData.createdAt,
+        updatedAt: ticketData.updatedAt,
+        assignedTo: ticketData.assignedTo ? {
+          id: ticketData.assignedTo.id,
+          name: `${ticketData.assignedTo.firstName} ${ticketData.assignedTo.lastName}`,
+          email: ticketData.assignedTo.email
+        } : null,
+        reporter: ticketData.createdBy ? {
+          id: ticketData.createdBy.id,
+          name: `${ticketData.createdBy.firstName} ${ticketData.createdBy.lastName}`,
+          email: ticketData.createdBy.email
+        } : null
       };
       
-      const mockComments = [
-        {
-          id: 1,
-          content: 'Проблема воспроизведена. Начинаю исследование.',
-          author: {
-            name: 'Иван Петров',
-            avatar: null
-          },
-          createdAt: new Date().toISOString()
-        }
-      ];
+      // Преобразуем комментарии
+      const formattedComments = (ticketData.Comments || []).map(comment => ({
+        id: comment.id,
+        content: comment.content,
+        author: {
+          name: `${comment.User.firstName} ${comment.User.lastName}`,
+          avatar: null
+        },
+        createdAt: comment.createdAt
+      }));
       
-      setTicket(mockTicket);
-      setComments(mockComments);
-      setEditedTicket(mockTicket);
+      // Преобразуем прикрепленные файлы
+      const formattedAttachments = (ticketData.Attachments || []).map(attachment => ({
+        id: attachment.id,
+        filename: attachment.filename,
+        originalName: attachment.originalName,
+        mimeType: attachment.mimeType,
+        size: attachment.size,
+        createdAt: attachment.createdAt
+      }));
+      
+      setTicket(formattedTicket);
+      setComments(formattedComments);
+      setAttachments(formattedAttachments);
+      setEditedTicket(formattedTicket);
+      
+      console.log('Тикет успешно загружен:', formattedTicket);
+      
     } catch (err) {
-      setError('Ошибка загрузки деталей тикета');
+      console.error('Ошибка загрузки деталей тикета:', err);
+      
+      // Более детальная обработка ошибок
+      let errorMessage = 'Ошибка загрузки деталей тикета';
+      
+      if (err.response) {
+        // Ошибка от сервера
+        console.error('Ошибка сервера:', err.response.status, err.response.data);
+        if (err.response.status === 404) {
+          errorMessage = 'Тикет не найден';
+        } else if (err.response.status === 403) {
+          errorMessage = 'Нет доступа к тикету';
+        } else if (err.response.status === 401) {
+          errorMessage = 'Необходима авторизация';
+        } else {
+          errorMessage = `Ошибка сервера: ${err.response.status}`;
+        }
+      } else if (err.request) {
+        // Ошибка сети
+        console.error('Ошибка сети:', err.request);
+        errorMessage = 'Ошибка соединения с сервером';
+      } else {
+        // Другие ошибки
+        console.error('Неизвестная ошибка:', err.message);
+        errorMessage = `Неизвестная ошибка: ${err.message}`;
+      }
+      
+      setError(errorMessage);
+      
+      // Убираем fallback к мокковым данным - лучше показать ошибку
+      setTicket(null);
+      setComments([]);
+      
     } finally {
       setLoading(false);
     }
@@ -107,31 +175,229 @@ const TicketDetails = () => {
     if (!newComment.trim()) return;
     
     try {
-      // Здесь будет API вызов для добавления комментария
+      console.log('Добавление комментария к тикету:', id);
+      
+      const response = await axios.post(`/api/tickets/${id}/comments`, {
+        content: newComment
+      });
+      
+      console.log('Комментарий добавлен:', response.data);
+      
       const newCommentObj = {
-        id: comments.length + 1,
-        content: newComment,
+        id: response.data.comment.id,
+        content: response.data.comment.content,
         author: {
-          name: user.name,
+          name: `${response.data.comment.User.firstName} ${response.data.comment.User.lastName}`,
           avatar: null
         },
-        createdAt: new Date().toISOString()
+        createdAt: response.data.comment.createdAt
       };
       
       setComments([...comments, newCommentObj]);
       setNewComment('');
+      
     } catch (err) {
-      setError('Ошибка добавления комментария');
+      console.error('Ошибка добавления комментария:', err);
+      
+      let errorMessage = 'Ошибка добавления комментария';
+      if (err.response?.status === 403) {
+        errorMessage = 'Нет доступа для добавления комментария';
+      } else if (err.response?.status === 404) {
+        errorMessage = 'Тикет не найден';
+      }
+      
+      setError(errorMessage);
     }
+  };
+
+  // Функции для работы с файлами
+  const handleFileUpload = async (event) => {
+    const files = Array.from(event.target.files);
+    if (files.length === 0) return;
+    
+    try {
+      setUploadingFiles(true);
+      setError(null);
+      
+      // Дополнительная диагностика
+      console.log('📎 ЗАГРУЗКА ФАЙЛОВ - Начало процесса', {
+        ticketId: id,
+        ticketIdType: typeof id,
+        filesCount: files.length,
+        fileNames: files.map(f => f.name),
+        url: `/api/tickets/${id}/attachments`
+      });
+      
+      // Проверяем, что ID тикета корректный
+      if (!id || id.trim() === '') {
+        console.error('❌ ЗАГРУЗКА ФАЙЛОВ - Некорректный ID тикета:', id);
+        setError('Некорректный ID тикета');
+        return;
+      }
+      
+      const formData = new FormData();
+      files.forEach(file => {
+        formData.append('files', file);
+      });
+      
+      console.log('📤 ЗАГРУЗКА ФАЙЛОВ - Отправка запроса к серверу', {
+        ticketId: id,
+        url: `/api/tickets/${id}/attachments`,
+        filesCount: files.length
+      });
+      
+      const response = await axios.post(`/api/tickets/${id}/attachments`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
+      console.log('Файлы успешно загружены:', response.data);
+      
+      // Обновляем список прикрепленных файлов
+      const newAttachments = response.data.attachments.map(attachment => ({
+        id: attachment.id,
+        filename: attachment.filename,
+        originalName: attachment.originalName,
+        mimeType: attachment.mimeType,
+        size: attachment.size,
+        createdAt: attachment.createdAt
+      }));
+      
+      setAttachments([...attachments, ...newAttachments]);
+      
+      // Очищаем input
+      event.target.value = '';
+      
+    } catch (err) {
+      console.error('Ошибка загрузки файлов:', err);
+      
+      let errorMessage = 'Ошибка загрузки файлов';
+      if (err.response?.status === 403) {
+        errorMessage = 'Нет доступа для загрузки файлов';
+      } else if (err.response?.status === 404) {
+        errorMessage = 'Тикет не найден';
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      }
+      
+      setError(errorMessage);
+    } finally {
+      setUploadingFiles(false);
+    }
+  };
+  
+  const handleFileDownload = async (attachmentId, originalName) => {
+    try {
+      console.log('Скачивание файла:', attachmentId, originalName);
+      
+      const response = await axios.get(`/api/tickets/${id}/attachments/${attachmentId}`, {
+        responseType: 'blob'
+      });
+      
+      // Создаем ссылку для скачивания
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', originalName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      console.log('Файл успешно скачан:', originalName);
+      
+    } catch (err) {
+      console.error('Ошибка скачивания файла:', err);
+      
+      let errorMessage = 'Ошибка скачивания файла';
+      if (err.response?.status === 403) {
+        errorMessage = 'Нет доступа для скачивания файла';
+      } else if (err.response?.status === 404) {
+        errorMessage = 'Файл не найден';
+      }
+      
+      setError(errorMessage);
+    }
+  };
+  
+  const handleFileDelete = async (attachmentId, originalName) => {
+    if (!window.confirm(`Вы уверены, что хотите удалить файл "${originalName}"?`)) {
+      return;
+    }
+    
+    try {
+      console.log('Удаление файла:', attachmentId, originalName);
+      
+      await axios.delete(`/api/tickets/${id}/attachments/${attachmentId}`);
+      
+      // Удаляем файл из списка
+      setAttachments(attachments.filter(att => att.id !== attachmentId));
+      
+      console.log('Файл успешно удален:', originalName);
+      
+    } catch (err) {
+      console.error('Ошибка удаления файла:', err);
+      
+      let errorMessage = 'Ошибка удаления файла';
+      if (err.response?.status === 403) {
+        errorMessage = 'Нет доступа для удаления файла';
+      } else if (err.response?.status === 404) {
+        errorMessage = 'Файл не найден';
+      }
+      
+      setError(errorMessage);
+    }
+  };
+  
+  const getFileIcon = (mimeType) => {
+    if (mimeType.startsWith('image/')) {
+      return <Image />;
+    } else if (mimeType === 'application/pdf') {
+      return <PictureAsPdf />;
+    } else if (mimeType.includes('document') || mimeType.includes('text')) {
+      return <Description />;
+    } else {
+      return <InsertDriveFile />;
+    }
+  };
+  
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   const handleUpdateTicket = async () => {
     try {
-      // Здесь будет API вызов для обновления тикета
+      console.log('Обновление тикета:', id, editedTicket);
+      
+      const response = await axios.put(`/api/tickets/${id}`, {
+        title: editedTicket.title,
+        description: editedTicket.description,
+        status: editedTicket.status,
+        priority: editedTicket.priority
+      });
+      
+      console.log('Тикет обновлен:', response.data);
+      
       setTicket(editedTicket);
       setEditDialogOpen(false);
+      setError(null);
+      
     } catch (err) {
-      setError('Ошибка обновления тикета');
+      console.error('Ошибка обновления тикета:', err);
+      
+      let errorMessage = 'Ошибка обновления тикета';
+      if (err.response?.status === 403) {
+        errorMessage = 'Нет доступа для обновления тикета';
+      } else if (err.response?.status === 404) {
+        errorMessage = 'Тикет не найден';
+      }
+      
+      setError(errorMessage);
     }
   };
 
@@ -186,7 +452,23 @@ const TicketDetails = () => {
   if (error) {
     return (
       <Box p={3}>
-        <Alert severity="error">{error}</Alert>
+        <Alert
+          severity="error"
+          action={
+            <Button
+              color="inherit"
+              size="small"
+              onClick={() => {
+                setError(null);
+                fetchTicketDetails();
+              }}
+            >
+              Повторить
+            </Button>
+          }
+        >
+          {error}
+        </Alert>
       </Box>
     );
   }
@@ -207,7 +489,7 @@ const TicketDetails = () => {
           <ArrowBack />
         </IconButton>
         <Typography variant="h4" component="h1" flexGrow={1}>
-          Тикет #{ticket.id}
+          Тикет #{ticket.ticketNumber || ticket.id.slice(0, 8)}
         </Typography>
         <Button
           variant="outlined"
@@ -298,6 +580,90 @@ const TicketDetails = () => {
                   Добавить комментарий
                 </Button>
               </Paper>
+              
+              <Divider sx={{ my: 3 }} />
+              
+              {/* Attachments Section */}
+              <Typography variant="h6" mb={2}>
+                Прикрепленные файлы
+              </Typography>
+              
+              {/* File Upload */}
+              <input
+                accept="*/*"
+                style={{ display: 'none' }}
+                id="file-upload-details"
+                multiple
+                type="file"
+                onChange={handleFileUpload}
+                disabled={uploadingFiles}
+              />
+              <label htmlFor="file-upload-details">
+                <Button
+                  variant="outlined"
+                  component="span"
+                  startIcon={<AttachFile />}
+                  disabled={uploadingFiles}
+                  sx={{ mb: 2 }}
+                >
+                  {uploadingFiles ? 'Загрузка...' : 'Прикрепить файлы'}
+                </Button>
+              </label>
+              
+              {/* Attachments List */}
+              {attachments.length > 0 ? (
+                <List>
+                  {attachments.map((attachment) => (
+                    <ListItem
+                      key={attachment.id}
+                      sx={{
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 1,
+                        mb: 1,
+                        bgcolor: 'background.paper'
+                      }}
+                    >
+                      <ListItemAvatar>
+                        <Avatar sx={{ bgcolor: 'primary.main' }}>
+                          {getFileIcon(attachment.mimeType)}
+                        </Avatar>
+                      </ListItemAvatar>
+                      <ListItemText
+                        primary={attachment.originalName}
+                        secondary={
+                          <>
+                            <Typography variant="body2" color="text.secondary">
+                              {formatFileSize(attachment.size)} • {new Date(attachment.createdAt).toLocaleString()}
+                            </Typography>
+                          </>
+                        }
+                      />
+                      <Box display="flex" gap={1}>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleFileDownload(attachment.id, attachment.originalName)}
+                          title="Скачать файл"
+                        >
+                          <Download />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleFileDelete(attachment.id, attachment.originalName)}
+                          title="Удалить файл"
+                          color="error"
+                        >
+                          <Delete />
+                        </IconButton>
+                      </Box>
+                    </ListItem>
+                  ))}
+                </List>
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                  Файлы не прикреплены
+                </Typography>
+              )}
             </CardContent>
           </Card>
         </Grid>
@@ -355,6 +721,44 @@ const TicketDetails = () => {
                     {ticket.assignedTo ? ticket.assignedTo.name : 'Не назначен'}
                   </Typography>
                 </Box>
+              </Box>
+              
+              <Divider sx={{ my: 2 }} />
+              
+              <Box mb={2}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Прикрепленные файлы
+                </Typography>
+                <Box display="flex" alignItems="center">
+                  <AttachFile sx={{ mr: 1, fontSize: 16 }} />
+                  <Typography variant="body2">
+                    {attachments.length > 0 ? `${attachments.length} файл(ов)` : 'Нет файлов'}
+                  </Typography>
+                </Box>
+                {attachments.length > 0 && (
+                  <Box mt={1}>
+                    {attachments.slice(0, 3).map((attachment) => (
+                      <Typography
+                        key={attachment.id}
+                        variant="caption"
+                        display="block"
+                        color="text.secondary"
+                        sx={{
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        • {attachment.originalName}
+                      </Typography>
+                    ))}
+                    {attachments.length > 3 && (
+                      <Typography variant="caption" color="text.secondary">
+                        ... и еще {attachments.length - 3}
+                      </Typography>
+                    )}
+                  </Box>
+                )}
               </Box>
             </CardContent>
           </Card>
