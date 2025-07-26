@@ -2,7 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
-const { Sequelize } = require('sequelize');
 
 // Import utilities
 const logger = require('./utils/logger');
@@ -11,12 +10,31 @@ const setupSwagger = require('./utils/swagger');
 
 // Initialize Express app
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3006;
+
+// Increase header size limits to prevent 431 errors
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Configure server with increased header limits
+const server = require('http').createServer(app);
+server.maxHeadersCount = 0; // Remove header count limit
+server.headersTimeout = 60000; // 60 seconds
+server.requestTimeout = 60000; // 60 seconds
+server.maxHeaderSize = 16384; // 16KB header size limit (default is 8KB)
 
 // Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(cors({
+  origin: [
+    process.env.FRONTEND_URL || 'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://0.0.0.0:3000'
+  ],
+  credentials: true,
+  maxAge: 86400, // 24 hours
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'X-Requested-With', 'Accept']
+}));
 
 // Request logging middleware
 app.use(morgan('combined', { stream: logger.stream }));
@@ -25,16 +43,7 @@ app.use(morgan('combined', { stream: logger.stream }));
 app.use(metricsMiddleware);
 
 // Database connection
-const sequelize = new Sequelize(
-  process.env.DB_NAME || 'servicedesk',
-  process.env.DB_USER || 'postgres',
-  process.env.DB_PASSWORD || 'postgres',
-  {
-    host: process.env.DB_HOST || 'localhost',
-    dialect: 'postgres',
-    logging: (msg) => logger.debug(msg)
-  }
-);
+const { sequelize } = require('../config/database');
 
 // Test database connection
 async function testDbConnection() {
@@ -42,16 +51,17 @@ async function testDbConnection() {
     await sequelize.authenticate();
     logger.info('Database connection has been established successfully.');
     
-    // Sync models with database
-    // In production, you might want to use migrations instead
-    if (process.env.NODE_ENV !== 'production') {
-      await sequelize.sync({ alter: true });
-      logger.info('Database models synchronized.');
-    }
+    // Sync models with database - temporarily disabled due to database permissions
+    // Use alter: true to update existing tables without dropping data
+    // await sequelize.sync({ alter: true });
+    // logger.info('Database models synchronized.');
   } catch (error) {
     logger.error('Unable to connect to the database:', error);
   }
 }
+
+// Import models to ensure they are loaded before sync
+require('./models');
 
 // Import routes
 const apiRoutes = require('./routes');
@@ -80,15 +90,17 @@ setupSwagger(app);
 setupMetricsRoute(app);
 
 // Start server
-app.listen(PORT, async () => {
+server.listen(PORT, async () => {
   logger.info(`Server is running on port ${PORT}`);
   await testDbConnection();
   
-  // Schedule SLA checks
-  const slaService = require('./services/slaService');
-  slaService.scheduleSlaChecks();
+  // Schedule SLA checks - temporarily disabled due to database permissions
+  // const slaService = require('./services/slaService');
+  // slaService.scheduleSlaChecks();
   
   // Update active tickets gauge initially and then every 5 minutes
+  // Temporarily disabled until database tables are created
+  /*
   const { Ticket } = require('./models');
   const { updateActiveTicketsGauge } = require('./utils/metrics');
   
@@ -96,6 +108,22 @@ app.listen(PORT, async () => {
   setInterval(async () => {
     await updateActiveTicketsGauge(Ticket);
   }, 5 * 60 * 1000);
+  */
+});
+
+// Handle server shutdown gracefully
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM signal received: closing HTTP server');
+  server.close(() => {
+    logger.info('HTTP server closed');
+  });
+});
+
+process.on('SIGINT', () => {
+  logger.info('SIGINT signal received: closing HTTP server');
+  server.close(() => {
+    logger.info('HTTP server closed');
+  });
 });
 
 module.exports = app;

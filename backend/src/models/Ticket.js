@@ -17,15 +17,15 @@ const Ticket = sequelize.define('Ticket', {
     allowNull: false
   },
   category: {
-    type: DataTypes.ENUM('incident', 'request', 'problem', 'change'),
-    defaultValue: 'request'
+    type: DataTypes.ENUM('technical', 'billing', 'general', 'feature_request'),
+    defaultValue: 'general'
   },
   priority: {
-    type: DataTypes.ENUM('P1', 'P2', 'P3', 'P4'),
-    defaultValue: 'P3'
+    type: DataTypes.ENUM('low', 'medium', 'high', 'urgent'),
+    defaultValue: 'medium'
   },
   status: {
-    type: DataTypes.ENUM('new', 'assigned', 'in_progress', 'on_hold', 'resolved', 'closed'),
+    type: DataTypes.ENUM('new', 'open', 'in_progress', 'resolved', 'closed'),
     defaultValue: 'new'
   },
   slaDeadline: {
@@ -57,7 +57,7 @@ const Ticket = sequelize.define('Ticket', {
     defaultValue: []
   },
   source: {
-    type: DataTypes.ENUM('web', 'email', 'telegram', 'phone'),
+    type: DataTypes.ENUM('web', 'email', 'telegram', 'api'),
     defaultValue: 'web'
   },
   telegramMessageId: {
@@ -73,19 +73,19 @@ const Ticket = sequelize.define('Ticket', {
       
       // Set response deadline
       switch(ticket.priority) {
-        case 'P1':
+        case 'urgent':
           ticket.responseDeadline = now.clone().add(30, 'minutes').toDate();
           ticket.slaDeadline = now.clone().add(4, 'hours').toDate();
           break;
-        case 'P2':
+        case 'high':
           ticket.responseDeadline = now.clone().add(2, 'hours').toDate();
           ticket.slaDeadline = now.clone().add(8, 'hours').toDate();
           break;
-        case 'P3':
+        case 'medium':
           ticket.responseDeadline = now.clone().add(4, 'hours').toDate();
           ticket.slaDeadline = now.clone().add(24, 'hours').toDate();
           break;
-        case 'P4':
+        case 'low':
           ticket.responseDeadline = now.clone().add(8, 'hours').toDate();
           ticket.slaDeadline = now.clone().add(48, 'hours').toDate();
           break;
@@ -100,16 +100,16 @@ const Ticket = sequelize.define('Ticket', {
         const now = moment();
         
         switch(ticket.priority) {
-          case 'P1':
+          case 'urgent':
             ticket.slaDeadline = now.clone().add(4, 'hours').toDate();
             break;
-          case 'P2':
+          case 'high':
             ticket.slaDeadline = now.clone().add(8, 'hours').toDate();
             break;
-          case 'P3':
+          case 'medium':
             ticket.slaDeadline = now.clone().add(24, 'hours').toDate();
             break;
-          case 'P4':
+          case 'low':
             ticket.slaDeadline = now.clone().add(48, 'hours').toDate();
             break;
         }

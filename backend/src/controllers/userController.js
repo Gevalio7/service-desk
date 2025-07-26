@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { User, Ticket } = require('../models');
 const { logger } = require('../../config/database');
 
+// Trigger nodemon restart
 /**
  * Get all users with filtering
  * Admin and agent only
@@ -344,3 +345,14 @@ exports.changePassword = async (req, res) => {
     user.password = newPassword;
     await user.save();
     
+    res.status(200).json({
+      message: 'Password changed successfully'
+    });
+  } catch (error) {
+    logger.error('Error in changePassword controller:', error);
+    res.status(500).json({
+      message: 'Error changing password',
+      error: process.env.NODE_ENV === 'production' ? {} : error.message
+    });
+  }
+};

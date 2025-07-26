@@ -23,10 +23,6 @@ const TicketHistory = sequelize.define('TicketHistory', {
     type: DataTypes.ENUM('create', 'update', 'delete', 'comment', 'attachment', 'sla_update'),
     defaultValue: 'update'
   },
-  description: {
-    type: DataTypes.TEXT,
-    allowNull: true
-  }
 }, {
   timestamps: true
 });

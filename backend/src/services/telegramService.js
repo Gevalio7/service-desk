@@ -1,5 +1,5 @@
 const axios = require('axios');
-const { logger } = require('../../config/database');
+const logger = require('../utils/logger');
 
 // Telegram Bot API token - should be in environment variables in production
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || 'your-telegram-bot-token';

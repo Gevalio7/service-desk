@@ -1,7 +1,7 @@
 const moment = require('moment');
 const { Op } = require('sequelize');
 const { Ticket, User, TicketHistory } = require('../models');
-const { logger } = require('../../config/database');
+const logger = require('../utils/logger');
 const notificationService = require('./notificationService');
 
 /**

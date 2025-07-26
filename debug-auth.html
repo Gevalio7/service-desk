@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug AuthContext</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .loading { background-color: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background-color: #0056b3; }
+        #logs {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            border-radius: 4px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .iframe-container {
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        iframe {
+            width: 100%;
+            height: 600px;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Debug AuthContext - React App</h1>
+        
+        <div id="status" class="status info">
+            Загрузка React приложения...
+        </div>
+        
+        <div>
+            <button onclick="checkReactApp()">Проверить React App</button>
+            <button onclick="checkBackend()">Проверить Backend</button>
+            <button onclick="clearToken()">Очистить токен</button>
+            <button onclick="setInvalidToken()">Установить недействительный токен</button>
+            <button onclick="clearLogs()">Очистить логи</button>
+        </div>
+        
+        <div id="logs"></div>
+    </div>
+
+    <div class="container">
+        <h2>React App (localhost:3000)</h2>
+        <div class="iframe-container">
+            <iframe id="reactFrame" src="http://localhost:3000" onload="onFrameLoad()"></iframe>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3007';
+        
+        function log(message, type = 'info') {
+            const logs = document.getElementById('logs');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `<span style="color: #666;">[${timestamp}]</span> <span style="color: ${type === 'error' ? 'red' : type === 'success' ? 'green' : 'blue'};">${message}</span>`;
+            logs.appendChild(logEntry);
+            logs.scrollTop = logs.scrollHeight;
+        }
+        
+        function updateStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+        }
+        
+        function onFrameLoad() {
+            log('React приложение загружено в iframe', 'success');
+            updateStatus('React приложение загружено', 'success');
+            
+            // Попробуем получить доступ к консоли iframe (может не работать из-за CORS)
+            try {
+                const frame = document.getElementById('reactFrame');
+                const frameWindow = frame.contentWindow;
+                log('Доступ к iframe получен');
+            } catch (error) {
+                log(`Ошибка доступа к iframe: ${error.message}`, 'error');
+            }
+        }
+        
+        async function checkReactApp() {
+            log('=== Проверка React App ===');
+            updateStatus('Проверка React приложения...', 'loading');
+            
+            try {
+                const response = await fetch('http://localhost:3000', {
+                    method: 'GET',
+                    mode: 'no-cors' // Избегаем CORS проблем
+                });
+                
+                log('React сервер отвечает', 'success');
+                updateStatus('React сервер работает', 'success');
+                
+                // Перезагружаем iframe
+                document.getElementById('reactFrame').src = 'http://localhost:3000?' + Date.now();
+                
+            } catch (error) {
+                log(`Ошибка подключения к React: ${error.message}`, 'error');
+                updateStatus(`Ошибка React: ${error.message}`, 'error');
+            }
+        }
+        
+        async function checkBackend() {
+            log('=== Проверка Backend ===');
+            updateStatus('Проверка backend...', 'loading');
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/auth/profile`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token') || 'no-token'}`
+                    }
+                });
+                
+                log(`Backend статус: ${response.status}`);
+                
+                if (response.status === 401) {
+                    const data = await response.json();
+                    log(`Backend работает корректно: ${data.message}`, 'success');
+                    updateStatus('Backend работает корректно', 'success');
+                } else if (response.ok) {
+                    const data = await response.json();
+                    log(`Профиль получен: ${JSON.stringify(data)}`, 'success');
+                    updateStatus('Пользователь авторизован', 'success');
+                } else {
+                    log(`Неожиданный статус: ${response.status}`, 'error');
+                    updateStatus(`Backend ошибка: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                log(`Ошибка backend: ${error.message}`, 'error');
+                updateStatus(`Backend недоступен: ${error.message}`, 'error');
+            }
+        }
+        
+        function clearToken() {
+            localStorage.removeItem('token');
+            log('Токен удален из localStorage', 'info');
+            updateStatus('Токен очищен', 'info');
+            
+            // Перезагружаем iframe
+            document.getElementById('reactFrame').src = 'http://localhost:3000?' + Date.now();
+        }
+        
+        function setInvalidToken() {
+            localStorage.setItem('token', 'invalid-token-test-12345');
+            log('Установлен недействительный токен', 'info');
+            updateStatus('Установлен недействительный токен', 'info');
+            
+            // Перезагружаем iframe
+            document.getElementById('reactFrame').src = 'http://localhost:3000?' + Date.now();
+        }
+        
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+        }
+        
+        // Инициализация
+        document.addEventListener('DOMContentLoaded', function() {
+            log('Debug страница загружена');
+            log(`Текущий токен: ${localStorage.getItem('token') || 'отсутствует'}`);
+            
+            // Автоматически проверяем backend при загрузке
+            setTimeout(checkBackend, 1000);
+        });
+    </script>
+</body>
+</html>

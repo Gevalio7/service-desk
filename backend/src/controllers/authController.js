@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
+const { validationResult } = require('express-validator');
 const { User } = require('../models');
 const { logger } = require('../../config/database');
 
@@ -12,7 +13,23 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
  */
 exports.register = async (req, res) => {
   try {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        message: 'Ошибка валидации данных',
+        errors: errors.array()
+      });
+    }
+
     const { username, email, password, firstName, lastName, role, department, company } = req.body;
+    
+    // Additional validation
+    if (!username || !email || !password || !firstName || !lastName) {
+      return res.status(400).json({
+        message: 'Все обязательные поля должны быть заполнены'
+      });
+    }
     
     // Check if user already exists
     const existingUser = await User.findOne({ 
@@ -69,7 +86,23 @@ exports.register = async (req, res) => {
  */
 exports.login = async (req, res) => {
   try {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        message: 'Ошибка валидации данных',
+        errors: errors.array()
+      });
+    }
+
     const { email, password } = req.body;
+    
+    // Additional validation
+    if (!email || !password) {
+      return res.status(400).json({
+        message: 'Email и пароль обязательны для заполнения'
+      });
+    }
     
     // Find user by email
     const user = await User.findOne({ where: { email } });
