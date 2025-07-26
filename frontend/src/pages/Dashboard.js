@@ -75,15 +75,89 @@ const Dashboard = () => {
         const formattedStartDate = format(startDate, 'yyyy-MM-dd');
         const formattedEndDate = format(now, 'yyyy-MM-dd');
         
-        // Fetch SLA metrics
-        const metricsResponse = await axios.get('/api/tickets/metrics/sla', {
-          params: {
-            startDate: formattedStartDate,
-            endDate: formattedEndDate
+        // Fetch SLA metrics only for staff (admin/agent)
+        if (user.role === 'admin' || user.role === 'agent') {
+          try {
+            const metricsResponse = await axios.get('/api/tickets/metrics/sla', {
+              params: {
+                startDate: formattedStartDate,
+                endDate: formattedEndDate
+              }
+            });
+            setMetrics(metricsResponse.data.metrics);
+          } catch (metricsError) {
+            console.error('Error fetching SLA metrics:', metricsError);
+            // Set default metrics for staff if API fails
+            setMetrics({
+              totalTickets: 0,
+              resolvedTickets: 0,
+              slaBreaches: 0,
+              responseBreaches: 0,
+              avgResponseTime: 0,
+              avgResolutionTime: 0,
+              slaComplianceRate: 100,
+              responseComplianceRate: 100,
+              priorityMetrics: {
+                urgent: { total: 0, resolved: 0, slaBreaches: 0, responseBreaches: 0 },
+                high: { total: 0, resolved: 0, slaBreaches: 0, responseBreaches: 0 },
+                medium: { total: 0, resolved: 0, slaBreaches: 0, responseBreaches: 0 },
+                low: { total: 0, resolved: 0, slaBreaches: 0, responseBreaches: 0 }
+              }
+            });
           }
-        });
-        
-        setMetrics(metricsResponse.data.metrics);
+        } else {
+          // For clients, calculate basic metrics from their tickets
+          try {
+            const ticketsResponse = await axios.get('/api/tickets', {
+              params: {
+                createdById: user.id,
+                startDate: formattedStartDate,
+                endDate: formattedEndDate,
+                limit: 1000 // Get all tickets for metrics calculation
+              }
+            });
+            
+            const tickets = ticketsResponse.data.tickets || [];
+            const totalTickets = tickets.length;
+            const resolvedTickets = tickets.filter(t => ['resolved', 'closed'].includes(t.status)).length;
+            
+            setMetrics({
+              totalTickets,
+              resolvedTickets,
+              slaBreaches: 0,
+              responseBreaches: 0,
+              avgResponseTime: 0,
+              avgResolutionTime: 0,
+              slaComplianceRate: 100,
+              responseComplianceRate: 100,
+              priorityMetrics: {
+                urgent: { total: 0, resolved: 0, slaBreaches: 0, responseBreaches: 0 },
+                high: { total: 0, resolved: 0, slaBreaches: 0, responseBreaches: 0 },
+                medium: { total: 0, resolved: 0, slaBreaches: 0, responseBreaches: 0 },
+                low: { total: 0, resolved: 0, slaBreaches: 0, responseBreaches: 0 }
+              }
+            });
+          } catch (clientMetricsError) {
+            console.error('Error fetching client metrics:', clientMetricsError);
+            // Set default metrics for clients
+            setMetrics({
+              totalTickets: 0,
+              resolvedTickets: 0,
+              slaBreaches: 0,
+              responseBreaches: 0,
+              avgResponseTime: 0,
+              avgResolutionTime: 0,
+              slaComplianceRate: 100,
+              responseComplianceRate: 100,
+              priorityMetrics: {
+                urgent: { total: 0, resolved: 0, slaBreaches: 0, responseBreaches: 0 },
+                high: { total: 0, resolved: 0, slaBreaches: 0, responseBreaches: 0 },
+                medium: { total: 0, resolved: 0, slaBreaches: 0, responseBreaches: 0 },
+                low: { total: 0, resolved: 0, slaBreaches: 0, responseBreaches: 0 }
+              }
+            });
+          }
+        }
         
         // Fetch recent tickets
         const ticketsResponse = await axios.get('/api/tickets', {
@@ -141,18 +215,18 @@ const Dashboard = () => {
       series: [{
         name: 'SLA соблюдено',
         data: [
-          metrics.priorityMetrics.P1.total - metrics.priorityMetrics.P1.slaBreaches,
-          metrics.priorityMetrics.P2.total - metrics.priorityMetrics.P2.slaBreaches,
-          metrics.priorityMetrics.P3.total - metrics.priorityMetrics.P3.slaBreaches,
-          metrics.priorityMetrics.P4.total - metrics.priorityMetrics.P4.slaBreaches
+          metrics.priorityMetrics.urgent.total - metrics.priorityMetrics.urgent.slaBreaches,
+          metrics.priorityMetrics.high.total - metrics.priorityMetrics.high.slaBreaches,
+          metrics.priorityMetrics.medium.total - metrics.priorityMetrics.medium.slaBreaches,
+          metrics.priorityMetrics.low.total - metrics.priorityMetrics.low.slaBreaches
         ]
       }, {
         name: 'SLA нарушено',
         data: [
-          metrics.priorityMetrics.P1.slaBreaches,
-          metrics.priorityMetrics.P2.slaBreaches,
-          metrics.priorityMetrics.P3.slaBreaches,
-          metrics.priorityMetrics.P4.slaBreaches
+          metrics.priorityMetrics.urgent.slaBreaches,
+          metrics.priorityMetrics.high.slaBreaches,
+          metrics.priorityMetrics.medium.slaBreaches,
+          metrics.priorityMetrics.low.slaBreaches
         ]
       }],
       options: {
@@ -173,7 +247,7 @@ const Dashboard = () => {
           enabled: false
         },
         xaxis: {
-          categories: ['P1', 'P2', 'P3', 'P4'],
+          categories: ['Критический', 'Высокий', 'Средний', 'Низкий'],
         },
         colors: [theme.palette.success.main, theme.palette.error.main],
         fill: {
@@ -248,13 +322,13 @@ const Dashboard = () => {
   // Get priority color
   const getPriorityColor = (priority) => {
     switch (priority) {
-      case 'P1':
+      case 'urgent':
         return theme.palette.error.main;
-      case 'P2':
+      case 'high':
         return theme.palette.error.light;
-      case 'P3':
+      case 'medium':
         return theme.palette.warning.main;
-      case 'P4':
+      case 'low':
         return theme.palette.success.main;
       default:
         return theme.palette.grey[500];
@@ -284,13 +358,13 @@ const Dashboard = () => {
   // Translate priority
   const translatePriority = (priority) => {
     switch (priority) {
-      case 'P1':
+      case 'urgent':
         return 'Критический';
-      case 'P2':
+      case 'high':
         return 'Высокий';
-      case 'P3':
+      case 'medium':
         return 'Средний';
-      case 'P4':
+      case 'low':
         return 'Низкий';
       default:
         return priority;
@@ -396,46 +470,51 @@ const Dashboard = () => {
           </Card>
         </Grid>
         
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
-              <Avatar sx={{ bgcolor: theme.palette.error.main, mr: 2 }}>
-                <SlaBreachIcon />
-              </Avatar>
-              <Box>
-                <Typography variant="body2" color="text.secondary">
-                  Нарушения SLA
-                </Typography>
-                <Typography variant="h4">
-                  {metrics?.slaBreaches || 0}
-                </Typography>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
-              <Avatar sx={{ bgcolor: theme.palette.warning.main, mr: 2 }}>
-                <TimeIcon />
-              </Avatar>
-              <Box>
-                <Typography variant="body2" color="text.secondary">
-                  Среднее время решения (ч)
-                </Typography>
-                <Typography variant="h4">
-                  {metrics ? Math.round(metrics.avgResolutionTime / 60) : 0}
-                </Typography>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
+        {/* Show SLA metrics only for staff */}
+        {(user.role === 'admin' || user.role === 'agent') && (
+          <>
+            <Grid item xs={12} sm={6} md={3}>
+              <Card>
+                <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Avatar sx={{ bgcolor: theme.palette.error.main, mr: 2 }}>
+                    <SlaBreachIcon />
+                  </Avatar>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">
+                      Нарушения SLA
+                    </Typography>
+                    <Typography variant="h4">
+                      {metrics?.slaBreaches || 0}
+                    </Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            
+            <Grid item xs={12} sm={6} md={3}>
+              <Card>
+                <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Avatar sx={{ bgcolor: theme.palette.warning.main, mr: 2 }}>
+                    <TimeIcon />
+                  </Avatar>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">
+                      Среднее время решения (ч)
+                    </Typography>
+                    <Typography variant="h4">
+                      {metrics ? Math.round(metrics.avgResolutionTime / 60) : 0}
+                    </Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          </>
+        )}
       </Grid>
       
       {/* Charts */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12} md={user.role === 'client' ? 12 : 4}>
           <Card sx={{ height: '100%' }}>
             <CardHeader title="Статус заявок" />
             <Divider />
@@ -452,27 +531,30 @@ const Dashboard = () => {
           </Card>
         </Grid>
         
-        <Grid item xs={12} md={8}>
-          <Card sx={{ height: '100%' }}>
-            <CardHeader title="Соблюдение SLA по приоритетам" />
-            <Divider />
-            <CardContent>
-              {slaComplianceChart && (
-                <Chart
-                  options={slaComplianceChart.options}
-                  series={slaComplianceChart.series}
-                  type="bar"
-                  height={300}
-                />
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
+        {/* Show SLA compliance chart only for staff */}
+        {(user.role === 'admin' || user.role === 'agent') && (
+          <Grid item xs={12} md={8}>
+            <Card sx={{ height: '100%' }}>
+              <CardHeader title="Соблюдение SLA по приоритетам" />
+              <Divider />
+              <CardContent>
+                {slaComplianceChart && (
+                  <Chart
+                    options={slaComplianceChart.options}
+                    series={slaComplianceChart.series}
+                    type="bar"
+                    height={300}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+        )}
       </Grid>
       
       {/* Recent tickets and response time */}
       <Grid container spacing={3}>
-        <Grid item xs={12} md={8}>
+        <Grid item xs={12} md={user.role === 'client' ? 12 : 8}>
           <Card>
             <CardHeader 
               title="Последние заявки" 
@@ -555,43 +637,46 @@ const Dashboard = () => {
           </Card>
         </Grid>
         
-        <Grid item xs={12} md={4}>
-          <Card sx={{ height: '100%' }}>
-            <CardHeader title="Среднее время ответа" />
-            <Divider />
-            <CardContent>
-              {responseTimeChart && (
-                <Chart
-                  options={responseTimeChart.options}
-                  series={responseTimeChart.series}
-                  type="bar"
-                  height={300}
-                />
-              )}
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  SLA для первого ответа:
-                </Typography>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2">P1 (Критический):</Typography>
-                  <Typography variant="body2" fontWeight="bold">30 минут</Typography>
+        {/* Show response time chart only for staff */}
+        {(user.role === 'admin' || user.role === 'agent') && (
+          <Grid item xs={12} md={4}>
+            <Card sx={{ height: '100%' }}>
+              <CardHeader title="Среднее время ответа" />
+              <Divider />
+              <CardContent>
+                {responseTimeChart && (
+                  <Chart
+                    options={responseTimeChart.options}
+                    series={responseTimeChart.series}
+                    type="bar"
+                    height={300}
+                  />
+                )}
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    SLA для первого ответа:
+                  </Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="body2">P1 (Критический):</Typography>
+                    <Typography variant="body2" fontWeight="bold">30 минут</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="body2">P2 (Высокий):</Typography>
+                    <Typography variant="body2" fontWeight="bold">2 часа</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="body2">P3 (Средний):</Typography>
+                    <Typography variant="body2" fontWeight="bold">4 часа</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2">P4 (Низкий):</Typography>
+                    <Typography variant="body2" fontWeight="bold">8 часов</Typography>
+                  </Box>
                 </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2">P2 (Высокий):</Typography>
-                  <Typography variant="body2" fontWeight="bold">2 часа</Typography>
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2">P3 (Средний):</Typography>
-                  <Typography variant="body2" fontWeight="bold">4 часа</Typography>
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body2">P4 (Низкий):</Typography>
-                  <Typography variant="body2" fontWeight="bold">8 часов</Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
+        )}
       </Grid>
     </Box>
   );

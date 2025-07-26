@@ -123,16 +123,42 @@ const darkTheme = createTheme({
 
 // Protected route component
 const ProtectedRoute = ({ children, requiredRoles = [] }) => {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, isLoading } = useAuth();
+  
+  console.log('🛡️ ProtectedRoute: State check -', {
+    isLoading,
+    isAuthenticated,
+    user: user ? user.username : 'null',
+    requiredRoles
+  });
+  
+  // Show loading while auth is being initialized
+  if (isLoading) {
+    console.log('⏳ ProtectedRoute: Showing loading screen');
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        fontSize: '18px'
+      }}>
+        Загрузка...
+      </div>
+    );
+  }
   
   if (!isAuthenticated) {
+    console.log('🚫 ProtectedRoute: Not authenticated, redirecting to login');
     return <Navigate to="/login" />;
   }
   
-  if (requiredRoles.length > 0 && !requiredRoles.includes(user.role)) {
+  if (requiredRoles.length > 0 && user && !requiredRoles.includes(user.role)) {
+    console.log('⛔ ProtectedRoute: Insufficient role, redirecting to dashboard');
     return <Navigate to="/dashboard" />;
   }
   
+  console.log('✅ ProtectedRoute: Access granted, rendering children');
   return children;
 };
 

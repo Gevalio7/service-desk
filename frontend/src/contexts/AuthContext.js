@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import axios from 'axios';
-import jwt_decode from 'jwt-decode';
+import axios from '../utils/axios';
+import { jwtDecode } from 'jwt-decode';
 
 // Create auth context
 const AuthContext = createContext();
@@ -15,36 +15,78 @@ export const AuthProvider = ({ children }) => {
   // Initialize auth state from localStorage
   useEffect(() => {
     const initAuth = async () => {
+      console.log('🔄 AuthContext: Starting initialization...');
+      
       try {
         const token = localStorage.getItem('token');
+        console.log('🔑 AuthContext: Token from localStorage:', token ? 'exists' : 'not found');
         
-        if (token) {
+        if (!token) {
+          // No token found, user is not authenticated
+          console.log('❌ AuthContext: No token, setting unauthenticated state');
+          setUser(null);
+          setIsAuthenticated(false);
+          setIsLoading(false);
+          console.log('✅ AuthContext: Initialization complete (no token)');
+          return;
+        }
+
+        try {
           // Check if token is expired
-          const decodedToken = jwt_decode(token);
+          console.log('🔍 AuthContext: Checking token expiration...');
+          const decodedToken = jwtDecode(token);
           const currentTime = Date.now() / 1000;
           
           if (decodedToken.exp < currentTime) {
             // Token is expired
+            console.log('⏰ AuthContext: Token expired, clearing auth state');
+            localStorage.removeItem('token');
+            setUser(null);
+            setIsAuthenticated(false);
+            setIsLoading(false);
+            console.log('✅ AuthContext: Initialization complete (expired token)');
+            return;
+          }
+
+          // Token is valid, try to get user profile
+          console.log('📡 AuthContext: Fetching user profile...');
+          const response = await axios.get('/api/auth/profile');
+          
+          if (response.data && response.data.user) {
+            console.log('👤 AuthContext: Profile fetched successfully:', response.data.user.username);
+            setUser(response.data.user);
+            setIsAuthenticated(true);
+            console.log('✅ AuthContext: Initialization complete (authenticated)');
+          } else {
+            throw new Error('Invalid response format');
+          }
+        } catch (profileError) {
+          console.error('❌ AuthContext: Error fetching user profile:', profileError);
+          
+          // If it's a 401 error, token is invalid
+          if (profileError.response?.status === 401) {
+            console.log('🚫 AuthContext: Token invalid (401), clearing auth state');
             localStorage.removeItem('token');
             setUser(null);
             setIsAuthenticated(false);
           } else {
-            // Set auth header
-            axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-            
-            // Get user profile
-            const response = await axios.get('/api/auth/profile');
-            
-            setUser(response.data.user);
-            setIsAuthenticated(true);
+            // For other errors, keep the token but set user as not authenticated
+            // This prevents infinite loops while allowing retry later
+            console.log('⚠️ AuthContext: Profile fetch failed, but keeping token for retry');
+            setUser(null);
+            setIsAuthenticated(false);
           }
+          console.log('✅ AuthContext: Initialization complete (profile error)');
         }
       } catch (error) {
-        console.error('Auth initialization error:', error);
+        console.error('💥 AuthContext: Auth initialization error:', error);
+        // Clear everything on unexpected errors
         localStorage.removeItem('token');
         setUser(null);
         setIsAuthenticated(false);
+        console.log('✅ AuthContext: Initialization complete (unexpected error)');
       } finally {
+        console.log('🏁 AuthContext: Setting isLoading to false');
         setIsLoading(false);
       }
     };
@@ -65,9 +107,6 @@ export const AuthProvider = ({ children }) => {
       // Save token to localStorage
       localStorage.setItem('token', token);
       
-      // Set auth header
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      
       setUser(user);
       setIsAuthenticated(true);
       
@@ -75,12 +114,25 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Login error:', error);
       
-      if (error.response && error.response.data) {
-        setError(error.response.data.message || 'Ошибка входа в систему');
-      } else {
-        setError('Ошибка сервера. Пожалуйста, попробуйте позже.');
+      let errorMessage = 'Ошибка сервера. Пожалуйста, попробуйте позже.';
+      
+      if (error.response) {
+        // Server responded with error status
+        if (error.response.status === 401) {
+          errorMessage = 'Неверный email или пароль';
+        } else if (error.response.status === 400) {
+          errorMessage = error.response.data.message || 'Ошибка валидации данных';
+        } else if (error.response.status === 500) {
+          errorMessage = 'Ошибка сервера. Пожалуйста, попробуйте позже.';
+        } else {
+          errorMessage = error.response.data.message || 'Произошла ошибка при входе в систему';
+        }
+      } else if (error.request) {
+        // Network error
+        errorMessage = 'Ошибка сети. Проверьте подключение к интернету.';
       }
       
+      setError(errorMessage);
       throw error;
     } finally {
       setIsLoading(false);
@@ -100,9 +152,6 @@ export const AuthProvider = ({ children }) => {
       // Save token to localStorage
       localStorage.setItem('token', token);
       
-      // Set auth header
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      
       setUser(user);
       setIsAuthenticated(true);
       
@@ -110,12 +159,23 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Register error:', error);
       
-      if (error.response && error.response.data) {
-        setError(error.response.data.message || 'Ошибка регистрации');
-      } else {
-        setError('Ошибка сервера. Пожалуйста, попробуйте позже.');
+      let errorMessage = 'Ошибка сервера. Пожалуйста, попробуйте позже.';
+      
+      if (error.response) {
+        // Server responded with error status
+        if (error.response.status === 400) {
+          errorMessage = error.response.data.message || 'Ошибка валидации данных';
+        } else if (error.response.status === 500) {
+          errorMessage = 'Ошибка сервера. Пожалуйста, попробуйте позже.';
+        } else {
+          errorMessage = error.response.data.message || 'Произошла ошибка при регистрации';
+        }
+      } else if (error.request) {
+        // Network error
+        errorMessage = 'Ошибка сети. Проверьте подключение к интернету.';
       }
       
+      setError(errorMessage);
       throw error;
     } finally {
       setIsLoading(false);
@@ -125,7 +185,6 @@ export const AuthProvider = ({ children }) => {
   // Logout function
   const logout = () => {
     localStorage.removeItem('token');
-    delete axios.defaults.headers.common['Authorization'];
     setUser(null);
     setIsAuthenticated(false);
   };
