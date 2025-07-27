@@ -79,7 +79,7 @@ const Ticket = sequelize.define('Ticket', {
     type: DataTypes.UUID,
     allowNull: false,
     references: {
-      model: 'users',
+      model: 'Users',
       key: 'id'
     }
   },
@@ -87,7 +87,7 @@ const Ticket = sequelize.define('Ticket', {
     type: DataTypes.UUID,
     allowNull: true,
     references: {
-      model: 'users',
+      model: 'Users',
       key: 'id'
     }
   }

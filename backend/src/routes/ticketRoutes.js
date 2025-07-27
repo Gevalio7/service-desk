@@ -10,7 +10,16 @@ const router = express.Router();
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, 'uploads/attachments/')
+    // Используем абсолютный путь от корня проекта, как в контроллере
+    const uploadDir = path.join(process.cwd(), 'uploads', 'attachments');
+    
+    // Создаем директорию если она не существует
+    const fs = require('fs');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    
+    cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
     // Generate unique filename

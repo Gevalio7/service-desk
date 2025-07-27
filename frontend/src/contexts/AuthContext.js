@@ -62,6 +62,15 @@ export const AuthProvider = ({ children }) => {
           }
         } catch (profileError) {
           console.error('❌ AuthContext: Error fetching user profile:', profileError);
+          console.error('❌ AuthContext: Error details:', {
+            message: profileError.message,
+            status: profileError.response?.status,
+            statusText: profileError.response?.statusText,
+            data: profileError.response?.data,
+            url: profileError.config?.url,
+            method: profileError.config?.method,
+            baseURL: profileError.config?.baseURL
+          });
           
           // If it's a 401 error, token is invalid
           if (profileError.response?.status === 401) {
@@ -97,22 +106,34 @@ export const AuthProvider = ({ children }) => {
   // Login function
   const login = async (email, password) => {
     try {
+      console.log('🔐 AuthContext: Starting login process...', { email });
       setError(null);
       setIsLoading(true);
       
       const response = await axios.post('/api/auth/login', { email, password });
+      console.log('✅ AuthContext: Login response received', {
+        hasToken: !!response.data.token,
+        hasUser: !!response.data.user,
+        username: response.data.user?.username
+      });
       
       const { token, user } = response.data;
       
       // Save token to localStorage
       localStorage.setItem('token', token);
+      console.log('💾 AuthContext: Token saved to localStorage');
       
       setUser(user);
       setIsAuthenticated(true);
+      console.log('👤 AuthContext: User state updated', {
+        userId: user.id,
+        username: user.username,
+        isAuthenticated: true
+      });
       
       return user;
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('❌ AuthContext: Login error:', error);
       
       let errorMessage = 'Ошибка сервера. Пожалуйста, попробуйте позже.';
       
@@ -136,6 +157,7 @@ export const AuthProvider = ({ children }) => {
       throw error;
     } finally {
       setIsLoading(false);
+      console.log('🏁 AuthContext: Login process completed');
     }
   };
   

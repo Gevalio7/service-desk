@@ -11,7 +11,7 @@ const TicketContact = sequelize.define('TicketContact', {
     type: DataTypes.UUID,
     allowNull: false,
     references: {
-      model: 'tickets',
+      model: 'Tickets',
       key: 'id'
     }
   },
@@ -19,7 +19,7 @@ const TicketContact = sequelize.define('TicketContact', {
     type: DataTypes.UUID,
     allowNull: false,
     references: {
-      model: 'users',
+      model: 'Users',
       key: 'id'
     }
   },
@@ -33,7 +33,7 @@ const TicketContact = sequelize.define('TicketContact', {
     type: DataTypes.UUID,
     allowNull: false,
     references: {
-      model: 'users',
+      model: 'Users',
       key: 'id'
     },
     comment: 'Кто добавил контактное лицо'
