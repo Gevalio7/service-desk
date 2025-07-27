@@ -31,6 +31,22 @@ const Attachment = sequelize.define('Attachment', {
     type: DataTypes.STRING,
     allowNull: true
   },
+  ticketId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'Tickets',
+      key: 'id'
+    }
+  },
+  commentId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'Comments',
+      key: 'id'
+    }
+  },
   isPublic: {
     type: DataTypes.BOOLEAN,
     defaultValue: true

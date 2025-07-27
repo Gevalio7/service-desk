@@ -61,16 +61,33 @@ const Reports = () => {
       setLoading(true);
       setError(null);
       
-      // Здесь будет API вызов для генерации отчета
-      // Пока используем заглушку
-      const mockData = generateMockData(reportType);
+      // Используем реальный API для генерации отчета
+      const startDateParam = dateRange.start ? dateRange.start.toISOString().split('T')[0] : '';
+      const endDateParam = dateRange.end ? dateRange.end.toISOString().split('T')[0] : '';
       
-      // Имитация API вызова
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const params = new URLSearchParams();
+      if (startDateParam) params.append('startDate', startDateParam);
+      if (endDateParam) params.append('endDate', endDateParam);
       
-      setReportData(mockData);
+      const response = await fetch(`/api/reports/${reportType}?${params.toString()}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setReportData(data);
+      } else {
+        throw new Error('Failed to generate report');
+      }
     } catch (err) {
+      console.error('Error generating report:', err);
       setError('Ошибка генерации отчета');
+      // Fallback к мокковым данным при ошибке
+      const mockData = generateMockData(reportType);
+      setReportData(mockData);
     } finally {
       setLoading(false);
     }
@@ -101,9 +118,9 @@ const Reports = () => {
             }
           },
           tableData: [
-            { id: 1, title: 'Проблема с входом', status: 'open', priority: 'high', assignee: 'Иван Петров', created: '2024-01-25' },
+            { id: 1, title: 'Проблема с входом', status: 'new', priority: 'high', assignee: 'Иван Петров', created: '2024-01-25' },
             { id: 2, title: 'Запрос функции', status: 'in_progress', priority: 'medium', assignee: 'Мария Сидорова', created: '2024-01-24' },
-            { id: 3, title: 'Ошибка в системе', status: 'resolved', priority: 'critical', assignee: 'Алексей Иванов', created: '2024-01-23' }
+            { id: 3, title: 'Ошибка в системе', status: 'resolved', priority: 'urgent', assignee: 'Алексей Иванов', created: '2024-01-23' }
           ]
         };
       
@@ -126,7 +143,7 @@ const Reports = () => {
           tableData: [
             { id: 1, name: 'Иван Петров', email: 'ivan@example.com', role: 'admin', status: 'active', lastLogin: '2024-01-25' },
             { id: 2, name: 'Мария Сидорова', email: 'maria@example.com', role: 'agent', status: 'active', lastLogin: '2024-01-24' },
-            { id: 3, name: 'Алексей Иванов', email: 'alexey@example.com', role: 'user', status: 'inactive', lastLogin: '2024-01-20' }
+            { id: 3, name: 'Алексей Иванов', email: 'alexey@example.com', role: 'client', status: 'inactive', lastLogin: '2024-01-20' }
           ]
         };
       

@@ -22,6 +22,7 @@ import Register from './pages/Register';
 import NotFound from './pages/NotFound';
 import Settings from './pages/Settings';
 import Reports from './pages/Reports';
+import Notifications from './pages/Notifications';
 
 // Theme configuration
 const lightTheme = createTheme({
@@ -258,6 +259,14 @@ function App() {
               <ProtectedRoute requiredRoles={['admin', 'agent']}>
                 <DashboardLayout darkMode={darkMode} toggleTheme={toggleTheme}>
                   <Reports />
+                </DashboardLayout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/notifications" element={
+              <ProtectedRoute>
+                <DashboardLayout darkMode={darkMode} toggleTheme={toggleTheme}>
+                  <Notifications />
                 </DashboardLayout>
               </ProtectedRoute>
             } />

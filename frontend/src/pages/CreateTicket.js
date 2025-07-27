@@ -26,6 +26,7 @@ import {
   Delete
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
+import axios from '../utils/axios';
 
 const validationSchema = yup.object({
   title: yup
@@ -46,6 +47,10 @@ const validationSchema = yup.object({
     .string('Выберите категорию')
     .required('Категория обязательна')
     .oneOf(['technical', 'billing', 'general', 'feature_request'], 'Неверная категория'),
+  type: yup
+    .string('Выберите тип запроса')
+    .required('Тип запроса обязателен')
+    .oneOf(['incident', 'service_request', 'change_request'], 'Неверный тип запроса'),
 });
 
 const CreateTicket = () => {
@@ -62,6 +67,7 @@ const CreateTicket = () => {
       description: '',
       priority: 'medium',
       category: 'general',
+      type: 'incident',
     },
     validationSchema: validationSchema,
     onSubmit: async (values) => {
@@ -69,29 +75,60 @@ const CreateTicket = () => {
         setLoading(true);
         setError(null);
         
-        // Здесь будет API вызов для создания тикета
+        // Подготовка данных для отправки на сервер
         const ticketData = {
-          ...values,
-          reporterId: user.id,
-          attachments: attachments,
-          status: 'open',
-          createdAt: new Date().toISOString()
+          title: values.title,
+          description: values.description,
+          category: values.category,
+          priority: values.priority,
+          type: values.type,
+          source: 'web'
         };
         
         console.log('Creating ticket:', ticketData);
         
-        // Имитация API вызова
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Реальный API вызов для создания тикета
+        const response = await axios.post('/api/tickets', ticketData);
+        
+        console.log('Ticket created successfully:', response.data);
+        
+        const ticketId = response.data.ticket.id;
+        
+        // Загружаем файлы, если они есть
+        if (attachments.length > 0) {
+          try {
+            console.log('Uploading attachments for ticket:', ticketId);
+            
+            const formData = new FormData();
+            attachments.forEach(attachment => {
+              formData.append('files', attachment.file);
+            });
+            
+            const uploadResponse = await axios.post(`/api/tickets/${ticketId}/attachments`, formData, {
+              headers: {
+                'Content-Type': 'multipart/form-data'
+              }
+            });
+            
+            console.log('Attachments uploaded successfully:', uploadResponse.data);
+          } catch (uploadErr) {
+            console.error('Error uploading attachments:', uploadErr);
+            // Не прерываем процесс создания тикета из-за ошибки загрузки файлов
+            setError('Тикет создан, но произошла ошибка при загрузке файлов');
+          }
+        }
         
         setSuccess(true);
         
-        // Перенаправление на список тикетов через 2 секунды
+        // Перенаправление на детали тикета через 2 секунды
         setTimeout(() => {
-          navigate('/tickets');
+          navigate(`/tickets/${ticketId}`);
         }, 2000);
         
       } catch (err) {
-        setError('Ошибка создания тикета. Пожалуйста, попробуйте еще раз.');
+        console.error('Error creating ticket:', err);
+        const errorMessage = err.response?.data?.message || 'Ошибка создания тикета. Пожалуйста, попробуйте еще раз.';
+        setError(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -140,6 +177,15 @@ const CreateTicket = () => {
       case 'general': return 'Общие вопросы';
       case 'feature_request': return 'Запрос функции';
       default: return category;
+    }
+  };
+
+  const getTypeText = (type) => {
+    switch (type) {
+      case 'incident': return 'Инцидент';
+      case 'service_request': return 'Запрос на обслуживание';
+      case 'change_request': return 'Запрос на изменение';
+      default: return type;
     }
   };
 
@@ -209,7 +255,26 @@ const CreateTicket = () => {
                 />
 
                 <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}>
+                  <Grid item xs={12} sm={4}>
+                    <FormControl fullWidth>
+                      <InputLabel id="type-label">Тип запроса</InputLabel>
+                      <Select
+                        labelId="type-label"
+                        id="type"
+                        name="type"
+                        value={formik.values.type}
+                        label="Тип запроса"
+                        onChange={formik.handleChange}
+                        error={formik.touched.type && Boolean(formik.errors.type)}
+                      >
+                        <MenuItem value="incident">Инцидент</MenuItem>
+                        <MenuItem value="service_request">Запрос на обслуживание</MenuItem>
+                        <MenuItem value="change_request">Запрос на изменение</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12} sm={4}>
                     <FormControl fullWidth>
                       <InputLabel id="priority-label">Приоритет</InputLabel>
                       <Select
@@ -229,7 +294,7 @@ const CreateTicket = () => {
                     </FormControl>
                   </Grid>
 
-                  <Grid item xs={12} sm={6}>
+                  <Grid item xs={12} sm={4}>
                     <FormControl fullWidth>
                       <InputLabel id="category-label">Категория</InputLabel>
                       <Select
@@ -326,6 +391,23 @@ const CreateTicket = () => {
                   <Typography variant="body2">
                     {formik.values.title || 'Не указан'}
                   </Typography>
+                </Box>
+
+                <Box mb={2}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Тип запроса:
+                  </Typography>
+                  <Chip
+                    label={getTypeText(formik.values.type)}
+                    size="small"
+                    color={
+                      formik.values.type === 'incident'
+                        ? 'error'
+                        : formik.values.type === 'service_request'
+                        ? 'primary'
+                        : 'info'
+                    }
+                  />
                 </Box>
 
                 <Box mb={2}>

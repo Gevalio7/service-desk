@@ -98,7 +98,23 @@ const UserProfile = () => {
 
   const fetchUserActivity = async () => {
     try {
-      // Здесь будет API вызов для получения активности пользователя
+      // Используем реальный API для получения активности пользователя
+      const response = await fetch(`/api/users/${user.id}/activity`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setUserActivity(data.activity || []);
+      } else {
+        throw new Error('Failed to fetch user activity');
+      }
+    } catch (err) {
+      console.error('Error fetching user activity:', err);
+      // Fallback к мокковым данным при ошибке
       const mockActivity = [
         {
           id: 1,
@@ -121,19 +137,33 @@ const UserProfile = () => {
       ];
       
       setUserActivity(mockActivity);
-    } catch (err) {
-      console.error('Error fetching user activity:', err);
     }
   };
 
   const fetchUserTickets = async () => {
     try {
-      // Здесь будет API вызов для получения тикетов пользователя
+      // Используем реальный API для получения тикетов пользователя
+      const response = await fetch('/api/tickets?createdById=' + user.id, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setUserTickets(data.tickets || []);
+      } else {
+        throw new Error('Failed to fetch user tickets');
+      }
+    } catch (err) {
+      console.error('Error fetching user tickets:', err);
+      // Fallback к мокковым данным при ошибке
       const mockTickets = [
         {
           id: 123,
           title: 'Проблема с входом в систему',
-          status: 'open',
+          status: 'new',
           priority: 'high',
           createdAt: new Date().toISOString()
         },
@@ -154,8 +184,6 @@ const UserProfile = () => {
       ];
       
       setUserTickets(mockTickets);
-    } catch (err) {
-      console.error('Error fetching user tickets:', err);
     }
   };
 

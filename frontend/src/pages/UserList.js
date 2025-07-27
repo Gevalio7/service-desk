@@ -38,6 +38,7 @@ import {
   CheckCircle
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const UserList = () => {
   const navigate = useNavigate();
@@ -54,6 +55,14 @@ const UserList = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
   const [menuUserId, setMenuUserId] = useState(null);
+  const [confirmDialog, setConfirmDialog] = useState({
+    open: false,
+    title: '',
+    message: '',
+    onConfirm: null,
+    itemName: '',
+    itemType: 'элемент'
+  });
 
   useEffect(() => {
     fetchUsers();
@@ -62,8 +71,36 @@ const UserList = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      // Здесь будет API вызов для получения пользователей
-      // Пока используем заглушку
+      // Используем реальный API для получения пользователей
+      const response = await fetch('/api/users', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        // Преобразуем данные в нужный формат
+        const formattedUsers = data.users.map(user => ({
+          id: user.id,
+          name: `${user.firstName} ${user.lastName}`,
+          email: user.email,
+          phone: user.phone || 'Не указан',
+          role: user.role,
+          status: user.isActive ? 'active' : 'inactive',
+          createdAt: user.createdAt,
+          lastLogin: user.lastLogin,
+          ticketsCount: 0 // TODO: Получать из статистики
+        }));
+        setUsers(formattedUsers);
+      } else {
+        throw new Error('Failed to fetch users');
+      }
+    } catch (err) {
+      console.error('Error fetching users:', err);
+      setError('Ошибка загрузки пользователей');
+      // Fallback к мокковым данным при ошибке
       const mockUsers = [
         {
           id: 1,
@@ -86,34 +123,9 @@ const UserList = () => {
           createdAt: '2024-01-20T09:00:00Z',
           lastLogin: '2024-01-25T16:45:00Z',
           ticketsCount: 42
-        },
-        {
-          id: 3,
-          name: 'Алексей Иванов',
-          email: 'alexey@example.com',
-          phone: '+7 (999) 345-67-89',
-          role: 'user',
-          status: 'active',
-          createdAt: '2024-02-01T11:30:00Z',
-          lastLogin: '2024-01-24T12:15:00Z',
-          ticketsCount: 8
-        },
-        {
-          id: 4,
-          name: 'Елена Козлова',
-          email: 'elena@example.com',
-          phone: '+7 (999) 456-78-90',
-          role: 'user',
-          status: 'inactive',
-          createdAt: '2024-01-10T08:00:00Z',
-          lastLogin: '2024-01-20T10:00:00Z',
-          ticketsCount: 3
         }
       ];
-      
       setUsers(mockUsers);
-    } catch (err) {
-      setError('Ошибка загрузки пользователей');
     } finally {
       setLoading(false);
     }
@@ -139,50 +151,112 @@ const UserList = () => {
   const handleDeleteUser = (userId) => {
     const userToDelete = users.find(u => u.id === userId);
     setSelectedUser(userToDelete);
-    setDeleteDialogOpen(true);
+    setConfirmDialog({
+      open: true,
+      title: 'Удаление пользователя',
+      message: 'Пользователь будет удален безвозвратно. Все связанные с ним данные также будут удалены.',
+      itemName: userToDelete.name,
+      itemType: 'пользователя',
+      onConfirm: () => confirmDeleteUser(userId)
+    });
     handleMenuClose();
+  };
+
+  const confirmDeleteUser = async (userId) => {
+    try {
+      // Используем реальный API для удаления пользователя
+      const response = await fetch(`/api/users/${userId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        setUsers(users.filter(u => u.id !== userId));
+        setConfirmDialog({ ...confirmDialog, open: false });
+      } else {
+        throw new Error('Failed to delete user');
+      }
+    } catch (err) {
+      console.error('Error deleting user:', err);
+      setError('Ошибка удаления пользователя');
+      setConfirmDialog({ ...confirmDialog, open: false });
+    }
   };
 
   const handleToggleStatus = async (userId) => {
     try {
       const userToUpdate = users.find(u => u.id === userId);
-      const newStatus = userToUpdate.status === 'active' ? 'inactive' : 'active';
+      const newIsActive = userToUpdate.status !== 'active';
       
-      // Здесь будет API вызов для изменения статуса
-      setUsers(users.map(u => 
-        u.id === userId ? { ...u, status: newStatus } : u
-      ));
+      // Используем реальный API для изменения статуса
+      const response = await fetch(`/api/users/${userId}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          isActive: newIsActive
+        })
+      });
+      
+      if (response.ok) {
+        const newStatus = newIsActive ? 'active' : 'inactive';
+        setUsers(users.map(u =>
+          u.id === userId ? { ...u, status: newStatus } : u
+        ));
+      } else {
+        throw new Error('Failed to update user status');
+      }
       
       handleMenuClose();
     } catch (err) {
+      console.error('Error updating user status:', err);
       setError('Ошибка изменения статуса пользователя');
     }
   };
 
   const handleSaveUser = async () => {
     try {
-      // Здесь будет API вызов для сохранения пользователя
-      setUsers(users.map(u => 
-        u.id === selectedUser.id ? selectedUser : u
-      ));
+      // Используем реальный API для сохранения пользователя
+      const [firstName, lastName] = selectedUser.name.split(' ');
+      const response = await fetch(`/api/users/${selectedUser.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          firstName: firstName || '',
+          lastName: lastName || '',
+          role: selectedUser.role,
+          isActive: selectedUser.status === 'active'
+        })
+      });
       
-      setEditDialogOpen(false);
-      setSelectedUser(null);
+      if (response.ok) {
+        setUsers(users.map(u =>
+          u.id === selectedUser.id ? selectedUser : u
+        ));
+        setEditDialogOpen(false);
+        setSelectedUser(null);
+      } else {
+        throw new Error('Failed to update user');
+      }
     } catch (err) {
+      console.error('Error updating user:', err);
       setError('Ошибка сохранения пользователя');
     }
   };
 
-  const handleConfirmDelete = async () => {
-    try {
-      // Здесь будет API вызов для удаления пользователя
-      setUsers(users.filter(u => u.id !== selectedUser.id));
-      
-      setDeleteDialogOpen(false);
-      setSelectedUser(null);
-    } catch (err) {
-      setError('Ошибка удаления пользователя');
-    }
+  const closeConfirmDialog = () => {
+    setConfirmDialog({
+      ...confirmDialog,
+      open: false
+    });
   };
 
   const getRoleText = (role) => {
@@ -498,24 +572,20 @@ const UserList = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
-        <DialogTitle>Подтверждение удаления</DialogTitle>
-        <DialogContent>
-          <Typography>
-            Вы уверены, что хотите удалить пользователя "{selectedUser?.name}"?
-            Это действие нельзя отменить.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)}>
-            Отмена
-          </Button>
-          <Button onClick={handleConfirmDelete} color="error" variant="contained">
-            Удалить
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={closeConfirmDialog}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        itemName={confirmDialog.itemName}
+        itemType={confirmDialog.itemType}
+        confirmText="Удалить"
+        cancelText="Отмена"
+        severity="error"
+        confirmColor="error"
+      />
     </Box>
   );
 };

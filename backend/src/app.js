@@ -10,7 +10,7 @@ const setupSwagger = require('./utils/swagger');
 
 // Initialize Express app
 const app = express();
-const PORT = process.env.PORT || 3006;
+const PORT = process.env.PORT || 3007;
 
 // Increase header size limits to prevent 431 errors
 app.use(express.json({ limit: '50mb' }));

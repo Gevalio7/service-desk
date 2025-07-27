@@ -6,7 +6,8 @@ const {
   User,
   Comment,
   Attachment,
-  TicketHistory
+  TicketHistory,
+  TicketContact
 } = require('../models');
 const { logger } = require('../../config/database');
 const notificationService = require('../services/notificationService');
@@ -27,6 +28,7 @@ exports.createTicket = async (req, res) => {
       description,
       category,
       priority,
+      type,
       tags,
       source,
       telegramMessageId
@@ -61,6 +63,7 @@ exports.createTicket = async (req, res) => {
       description,
       category: category || 'general',
       priority: priority || 'medium',
+      type: type || 'incident',
       status: 'new',
       tags: tags || [],
       source: source || 'web',
@@ -126,6 +129,7 @@ exports.getTickets = async (req, res) => {
       status,
       priority,
       category,
+      type,
       assignedToId,
       createdById,
       startDate,
@@ -154,6 +158,11 @@ exports.getTickets = async (req, res) => {
     // Filter by category
     if (category) {
       where.category = category;
+    }
+    
+    // Filter by type
+    if (type) {
+      where.type = type;
     }
     
     // Filter by assigned user
@@ -301,6 +310,22 @@ exports.getTicketById = async (req, res) => {
             }
           ],
           order: [['createdAt', 'DESC']]
+        },
+        {
+          model: TicketContact,
+          include: [
+            {
+              model: User,
+              as: 'contactUser',
+              attributes: ['id', 'username', 'firstName', 'lastName', 'email']
+            },
+            {
+              model: User,
+              as: 'addedBy',
+              attributes: ['id', 'username', 'firstName', 'lastName']
+            }
+          ],
+          order: [['createdAt', 'ASC']]
         }
       ]
     });
@@ -353,33 +378,86 @@ exports.getTicketById = async (req, res) => {
 exports.updateTicket = async (req, res) => {
   try {
     const { id } = req.params;
-    const { 
-      title, 
-      description, 
-      status, 
-      priority, 
+    const {
+      title,
+      description,
+      status,
+      priority,
       category,
+      type,
       assignedToId,
       tags
     } = req.body;
+    
+    logger.info('🔄 ОБНОВЛЕНИЕ ТИКЕТА - Начало процесса', {
+      ticketId: id,
+      userId: req.user?.id,
+      userRole: req.user?.role,
+      requestBody: req.body,
+      requestedChanges: {
+        title: !!title,
+        description: !!description,
+        status: !!status,
+        priority: !!priority,
+        category: !!category,
+        assignedToId: !!assignedToId,
+        tags: !!tags
+      }
+    });
     
     // Get ticket
     const ticket = await Ticket.findByPk(id);
     
     if (!ticket) {
+      logger.error('❌ ОБНОВЛЕНИЕ ТИКЕТА - Тикет не найден', {
+        ticketId: id,
+        userId: req.user?.id
+      });
       return res.status(404).json({ message: 'Ticket not found' });
     }
+    
+    logger.info('✅ ОБНОВЛЕНИЕ ТИКЕТА - Тикет найден', {
+      ticketId: ticket.id,
+      currentStatus: ticket.status,
+      currentTitle: ticket.title,
+      createdById: ticket.createdById,
+      userId: req.user?.id
+    });
+    
+    // Store old values for logging
+    const oldValues = {
+      title: ticket.title,
+      description: ticket.description,
+      status: ticket.status,
+      priority: ticket.priority,
+      category: ticket.category,
+      type: ticket.type,
+      assignedToId: ticket.assignedToId,
+      tags: ticket.tags
+    };
     
     // Role-based access control
     if (req.user.role === 'client') {
       // Clients can only update their own tickets and only certain fields
       if (ticket.createdById !== req.user.id) {
+        logger.warn('❌ ОБНОВЛЕНИЕ ТИКЕТА - Доступ запрещен для клиента', {
+          ticketId: id,
+          userId: req.user?.id,
+          ticketCreatedById: ticket.createdById
+        });
         return res.status(403).json({ message: 'Access denied' });
       }
       
       // Clients can only update title and description
       if (title) ticket.title = title;
       if (description) ticket.description = description;
+      
+      logger.info('👤 ОБНОВЛЕНИЕ ТИКЕТА - Клиент может изменить только title и description', {
+        ticketId: id,
+        userId: req.user?.id,
+        titleChanged: !!title,
+        descriptionChanged: !!description
+      });
     } else {
       // Agents and admins can update all fields
       if (title) ticket.title = title;
@@ -387,35 +465,99 @@ exports.updateTicket = async (req, res) => {
       if (status) ticket.status = status;
       if (priority) ticket.priority = priority;
       if (category) ticket.category = category;
+      if (type) ticket.type = type;
       if (assignedToId) ticket.assignedToId = assignedToId;
       if (tags) ticket.tags = tags;
+      
+      logger.info('👨‍💼 ОБНОВЛЕНИЕ ТИКЕТА - Агент/Админ может изменить все поля', {
+        ticketId: id,
+        userId: req.user?.id,
+        userRole: req.user?.role,
+        statusChange: oldValues.status !== ticket.status ? `${oldValues.status} → ${ticket.status}` : 'нет изменений',
+        priorityChange: oldValues.priority !== ticket.priority ? `${oldValues.priority} → ${ticket.priority}` : 'нет изменений'
+      });
     }
     
-    // Create history entries for each changed field
+    // Check what actually changed
     const changes = ticket.changed();
+    logger.info('📝 ОБНОВЛЕНИЕ ТИКЕТА - Обнаруженные изменения', {
+      ticketId: id,
+      changes: changes || 'нет изменений',
+      changedFields: changes ? changes.map(field => ({
+        field,
+        oldValue: oldValues[field],
+        newValue: ticket[field]
+      })) : []
+    });
+    
+    // Create history entries for each changed field
     if (changes) {
-      for (const field of changes) {
-        await TicketHistory.create({
-          ticketId: ticket.id,
-          userId: req.user.id,
-          field,
-          oldValue: ticket.previous(field),
-          newValue: ticket[field],
-          action: 'update'
+      try {
+        for (const field of changes) {
+          await TicketHistory.create({
+            ticketId: ticket.id,
+            userId: req.user.id,
+            field,
+            oldValue: ticket.previous(field),
+            newValue: ticket[field],
+            action: 'update'
+          });
+        }
+        logger.info('📚 ОБНОВЛЕНИЕ ТИКЕТА - История изменений создана', {
+          ticketId: id,
+          changesCount: changes.length
         });
+      } catch (historyError) {
+        logger.error('❌ ОБНОВЛЕНИЕ ТИКЕТА - Ошибка создания истории:', {
+          ticketId: id,
+          error: historyError.message
+        });
+        // Не прерываем процесс из-за ошибки истории
       }
     }
     
     // Save ticket
+    logger.info('💾 ОБНОВЛЕНИЕ ТИКЕТА - Сохранение в базу данных', {
+      ticketId: id,
+      newStatus: ticket.status,
+      hasChanges: !!changes
+    });
+    
     await ticket.save();
+    
+    logger.info('🎉 ОБНОВЛЕНИЕ ТИКЕТА - Тикет успешно сохранен', {
+      ticketId: ticket.id,
+      finalStatus: ticket.status,
+      updatedAt: ticket.updatedAt
+    });
     
     res.status(200).json({
       message: 'Ticket updated successfully',
       ticket
     });
   } catch (error) {
-    logger.error('Error in updateTicket controller:', error);
-    res.status(500).json({ 
+    logger.error('❌ ОБНОВЛЕНИЕ ТИКЕТА - Критическая ошибка:', {
+      ticketId: req.params.id,
+      userId: req.user?.id,
+      error: error.message,
+      stack: error.stack,
+      requestBody: req.body
+    });
+    
+    // Проверяем, не связана ли ошибка с ENUM
+    if (error.message.includes('invalid input value for enum')) {
+      logger.error('🚫 ОБНОВЛЕНИЕ ТИКЕТА - Ошибка ENUM статуса:', {
+        requestedStatus: req.body.status,
+        error: error.message
+      });
+      return res.status(400).json({
+        message: 'Invalid status value. Please check available statuses.',
+        error: error.message,
+        requestedStatus: req.body.status
+      });
+    }
+    
+    res.status(500).json({
       message: 'Error updating ticket',
       error: process.env.NODE_ENV === 'production' ? {} : error.message
     });
@@ -523,6 +665,15 @@ exports.getSlaMetrics = async (req, res) => {
     const slaBreaches = tickets.filter(t => t.slaBreach).length;
     const responseBreaches = tickets.filter(t => t.responseBreach).length;
     
+    // Calculate status breakdown
+    const statusBreakdown = {
+      new: tickets.filter(t => t.status === 'new').length,
+      open: tickets.filter(t => t.status === 'open').length,
+      in_progress: tickets.filter(t => t.status === 'in_progress').length,
+      resolved: tickets.filter(t => t.status === 'resolved').length,
+      closed: tickets.filter(t => t.status === 'closed').length
+    };
+    
     // Calculate average response and resolution times
     let totalResponseTime = 0;
     let responseCount = 0;
@@ -580,6 +731,7 @@ exports.getSlaMetrics = async (req, res) => {
         avgResolutionTime,
         slaComplianceRate: totalTickets > 0 ? ((totalTickets - slaBreaches) / totalTickets) * 100 : 100,
         responseComplianceRate: totalTickets > 0 ? ((totalTickets - responseBreaches) / totalTickets) * 100 : 100,
+        statusBreakdown,
         priorityMetrics
       },
       dateRange: {
@@ -730,6 +882,19 @@ exports.uploadAttachments = async (req, res) => {
         errors: errors.array()
       });
     }
+
+    // Check for multer errors
+    if (req.fileValidationError) {
+      logger.error('❌ ЗАГРУЗКА ФАЙЛОВ - Ошибка multer', {
+        error: req.fileValidationError,
+        ticketId: req.params.id,
+        userId: req.user?.id
+      });
+      return res.status(400).json({
+        message: 'File upload error',
+        error: req.fileValidationError
+      });
+    }
     
     const { id } = req.params;
     const files = req.files;
@@ -737,9 +902,17 @@ exports.uploadAttachments = async (req, res) => {
     logger.info('📎 ЗАГРУЗКА ФАЙЛОВ - Получен запрос', {
       ticketId: id,
       ticketIdType: typeof id,
+      ticketIdLength: id ? id.length : 0,
+      ticketIdRaw: JSON.stringify(id),
       filesCount: files ? files.length : 0,
       userId: req.user?.id,
-      userRole: req.user?.role
+      userRole: req.user?.role,
+      requestUrl: req.originalUrl,
+      requestMethod: req.method,
+      requestHeaders: {
+        'content-type': req.headers['content-type'],
+        'user-agent': req.headers['user-agent']
+      }
     });
     
     if (!files || files.length === 0) {
@@ -1019,6 +1192,680 @@ exports.deleteAttachment = async (req, res) => {
     });
     res.status(500).json({
       message: 'Error deleting attachment',
+      error: process.env.NODE_ENV === 'production' ? {} : error.message
+    });
+  }
+};
+
+/**
+ * Assign ticket to user
+ * Admin and agent only
+ */
+exports.assignTicket = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { assignedToId } = req.body;
+    
+    logger.info('🎯 НАЗНАЧЕНИЕ ТИКЕТА - Начало процесса', {
+      ticketId: id,
+      assignedToId: assignedToId,
+      userId: req.user?.id,
+      userRole: req.user?.role
+    });
+    
+    // Role-based access control - только админы и агенты могут назначать
+    if (req.user.role === 'client') {
+      logger.warn('❌ НАЗНАЧЕНИЕ ТИКЕТА - Доступ запрещен для клиента', {
+        ticketId: id,
+        userId: req.user?.id,
+        userRole: req.user?.role
+      });
+      return res.status(403).json({ message: 'Access denied. Only admins and agents can assign tickets.' });
+    }
+    
+    // Get ticket
+    const ticket = await Ticket.findByPk(id);
+    
+    if (!ticket) {
+      logger.error('❌ НАЗНАЧЕНИЕ ТИКЕТА - Тикет не найден', {
+        ticketId: id,
+        userId: req.user?.id
+      });
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+    
+    // Validate assignee if provided
+    if (assignedToId) {
+      const assignee = await User.findByPk(assignedToId);
+      
+      if (!assignee) {
+        logger.error('❌ НАЗНАЧЕНИЕ ТИКЕТА - Пользователь для назначения не найден', {
+          ticketId: id,
+          assignedToId: assignedToId,
+          userId: req.user?.id
+        });
+        return res.status(404).json({ message: 'Assignee not found' });
+      }
+      
+      // Проверяем, что назначаем только на админа или агента
+      if (assignee.role === 'client') {
+        logger.error('❌ НАЗНАЧЕНИЕ ТИКЕТА - Нельзя назначить на клиента', {
+          ticketId: id,
+          assignedToId: assignedToId,
+          assigneeRole: assignee.role,
+          userId: req.user?.id
+        });
+        return res.status(400).json({ message: 'Cannot assign ticket to client. Only admins and agents can be assigned.' });
+      }
+      
+      logger.info('✅ НАЗНАЧЕНИЕ ТИКЕТА - Пользователь для назначения найден', {
+        ticketId: id,
+        assignedToId: assignedToId,
+        assigneeName: `${assignee.firstName} ${assignee.lastName}`,
+        assigneeRole: assignee.role,
+        userId: req.user?.id
+      });
+    }
+    
+    // Store old value for history
+    const oldAssignedToId = ticket.assignedToId;
+    
+    // Update assignment
+    ticket.assignedToId = assignedToId || null;
+    await ticket.save();
+    
+    // Create history entry
+    try {
+      await TicketHistory.create({
+        ticketId: ticket.id,
+        userId: req.user.id,
+        field: 'assignedToId',
+        oldValue: oldAssignedToId,
+        newValue: assignedToId,
+        action: 'assign'
+      });
+      
+      logger.info('📝 НАЗНАЧЕНИЕ ТИКЕТА - История создана', {
+        ticketId: id,
+        oldAssignedToId: oldAssignedToId,
+        newAssignedToId: assignedToId
+      });
+    } catch (historyError) {
+      logger.error('❌ НАЗНАЧЕНИЕ ТИКЕТА - Ошибка создания истории:', {
+        ticketId: id,
+        error: historyError.message
+      });
+      // Не прерываем процесс из-за ошибки истории
+    }
+    
+    // Get updated ticket with assignee info
+    const updatedTicket = await Ticket.findByPk(id, {
+      include: [
+        {
+          model: User,
+          as: 'createdBy',
+          attributes: ['id', 'username', 'firstName', 'lastName', 'email']
+        },
+        {
+          model: User,
+          as: 'assignedTo',
+          attributes: ['id', 'username', 'firstName', 'lastName', 'email']
+        }
+      ]
+    });
+    
+    logger.info('🎉 НАЗНАЧЕНИЕ ТИКЕТА - Тикет успешно назначен', {
+      ticketId: id,
+      assignedToId: assignedToId,
+      assignedToName: updatedTicket.assignedTo ? `${updatedTicket.assignedTo.firstName} ${updatedTicket.assignedTo.lastName}` : 'Не назначен',
+      userId: req.user?.id
+    });
+    
+    // Send notification about assignment
+    try {
+      if (assignedToId && assignedToId !== oldAssignedToId) {
+        await notificationService.sendTicketAssignmentNotification(updatedTicket, req.user);
+        logger.info('📧 НАЗНАЧЕНИЕ ТИКЕТА - Уведомление отправлено', {
+          ticketId: id,
+          assignedToId: assignedToId
+        });
+      }
+    } catch (notificationError) {
+      logger.error('❌ НАЗНАЧЕНИЕ ТИКЕТА - Ошибка отправки уведомления:', {
+        ticketId: id,
+        error: notificationError.message
+      });
+      // Не прерываем процесс из-за ошибки уведомлений
+    }
+    
+    res.status(200).json({
+      message: assignedToId ? 'Ticket assigned successfully' : 'Ticket unassigned successfully',
+      ticket: updatedTicket
+    });
+  } catch (error) {
+    logger.error('❌ НАЗНАЧЕНИЕ ТИКЕТА - Критическая ошибка:', {
+      ticketId: req.params.id,
+      assignedToId: req.body.assignedToId,
+      userId: req.user?.id,
+      error: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({
+      message: 'Error assigning ticket',
+      error: process.env.NODE_ENV === 'production' ? {} : error.message
+    });
+  }
+};
+
+/**
+ * Get available assignees (admins and agents)
+ * Admin and agent only
+ */
+exports.getAvailableAssignees = async (req, res) => {
+  try {
+    logger.info('👥 ПОЛУЧЕНИЕ ИСПОЛНИТЕЛЕЙ - Запрос списка доступных исполнителей', {
+      userId: req.user?.id,
+      userRole: req.user?.role
+    });
+    
+    // Role-based access control
+    if (req.user.role === 'client') {
+      logger.warn('❌ ПОЛУЧЕНИЕ ИСПОЛНИТЕЛЕЙ - Доступ запрещен для клиента', {
+        userId: req.user?.id,
+        userRole: req.user?.role
+      });
+      return res.status(403).json({ message: 'Access denied. Only admins and agents can view assignees.' });
+    }
+    
+    // Get all active admins and agents
+    const assignees = await User.findAll({
+      where: {
+        role: {
+          [Op.in]: ['admin', 'agent']
+        },
+        isActive: true
+      },
+      attributes: ['id', 'username', 'firstName', 'lastName', 'email', 'role'],
+      order: [['firstName', 'ASC'], ['lastName', 'ASC']]
+    });
+    
+    logger.info('✅ ПОЛУЧЕНИЕ ИСПОЛНИТЕЛЕЙ - Список получен', {
+      assigneesCount: assignees.length,
+      userId: req.user?.id
+    });
+    
+    res.status(200).json({
+      assignees: assignees.map(user => ({
+        id: user.id,
+        name: `${user.firstName} ${user.lastName}`,
+        email: user.email,
+        role: user.role,
+        username: user.username
+      }))
+    });
+  } catch (error) {
+    logger.error('❌ ПОЛУЧЕНИЕ ИСПОЛНИТЕЛЕЙ - Ошибка получения списка:', {
+      userId: req.user?.id,
+      error: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({
+      message: 'Error getting available assignees',
+      error: process.env.NODE_ENV === 'production' ? {} : error.message
+    });
+  }
+};
+
+/**
+ * Add contact person to ticket
+ * Admin, agent and ticket creator only
+ */
+exports.addTicketContact = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, role = 'watcher', notifyOnStatusChange = true, notifyOnComments = true, notifyOnAssignment = true } = req.body;
+    
+    logger.info('👥 ДОБАВЛЕНИЕ КОНТАКТА - Начало процесса', {
+      ticketId: id,
+      contactUserId: userId,
+      role: role,
+      requestUserId: req.user?.id,
+      userRole: req.user?.role
+    });
+    
+    // Get ticket
+    const ticket = await Ticket.findByPk(id);
+    
+    if (!ticket) {
+      logger.error('❌ ДОБАВЛЕНИЕ КОНТАКТА - Тикет не найден', {
+        ticketId: id,
+        userId: req.user?.id
+      });
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+    
+    // Role-based access control
+    if (req.user.role === 'client' && ticket.createdById !== req.user.id) {
+      logger.warn('❌ ДОБАВЛЕНИЕ КОНТАКТА - Доступ запрещен для клиента', {
+        ticketId: id,
+        userId: req.user?.id,
+        ticketCreatedById: ticket.createdById
+      });
+      return res.status(403).json({ message: 'Access denied. Only ticket creator, admins and agents can add contacts.' });
+    }
+    
+    // Validate contact user
+    const contactUser = await User.findByPk(userId);
+    if (!contactUser) {
+      logger.error('❌ ДОБАВЛЕНИЕ КОНТАКТА - Контактный пользователь не найден', {
+        ticketId: id,
+        contactUserId: userId,
+        userId: req.user?.id
+      });
+      return res.status(404).json({ message: 'Contact user not found' });
+    }
+    
+    // Check if contact already exists
+    const existingContact = await TicketContact.findOne({
+      where: {
+        ticketId: id,
+        userId: userId
+      }
+    });
+    
+    if (existingContact) {
+      logger.warn('❌ ДОБАВЛЕНИЕ КОНТАКТА - Контакт уже существует', {
+        ticketId: id,
+        contactUserId: userId,
+        existingContactId: existingContact.id
+      });
+      return res.status(400).json({ message: 'Contact already exists for this ticket' });
+    }
+    
+    // Create contact
+    const contact = await TicketContact.create({
+      ticketId: id,
+      userId: userId,
+      role: role,
+      addedById: req.user.id,
+      notifyOnStatusChange,
+      notifyOnComments,
+      notifyOnAssignment
+    });
+    
+    // Create history entry
+    try {
+      await TicketHistory.create({
+        ticketId: ticket.id,
+        userId: req.user.id,
+        field: 'contact',
+        newValue: `Added ${contactUser.firstName} ${contactUser.lastName} as ${role}`,
+        action: 'contact_add'
+      });
+    } catch (historyError) {
+      logger.error('❌ ДОБАВЛЕНИЕ КОНТАКТА - Ошибка создания истории:', {
+        ticketId: id,
+        error: historyError.message
+      });
+    }
+    
+    // Get contact with user data
+    const contactWithUser = await TicketContact.findByPk(contact.id, {
+      include: [
+        {
+          model: User,
+          as: 'contactUser',
+          attributes: ['id', 'username', 'firstName', 'lastName', 'email']
+        },
+        {
+          model: User,
+          as: 'addedBy',
+          attributes: ['id', 'username', 'firstName', 'lastName']
+        }
+      ]
+    });
+    
+    logger.info('✅ ДОБАВЛЕНИЕ КОНТАКТА - Контакт успешно добавлен', {
+      ticketId: id,
+      contactId: contact.id,
+      contactUserId: userId,
+      contactName: `${contactUser.firstName} ${contactUser.lastName}`,
+      role: role,
+      userId: req.user?.id
+    });
+    
+    res.status(201).json({
+      message: 'Contact added successfully',
+      contact: contactWithUser
+    });
+  } catch (error) {
+    logger.error('❌ ДОБАВЛЕНИЕ КОНТАКТА - Критическая ошибка:', {
+      ticketId: req.params.id,
+      contactUserId: req.body.userId,
+      userId: req.user?.id,
+      error: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({
+      message: 'Error adding contact',
+      error: process.env.NODE_ENV === 'production' ? {} : error.message
+    });
+  }
+};
+
+/**
+ * Remove contact person from ticket
+ * Admin, agent and ticket creator only
+ */
+exports.removeTicketContact = async (req, res) => {
+  try {
+    const { id, contactId } = req.params;
+    
+    logger.info('👥 УДАЛЕНИЕ КОНТАКТА - Начало процесса', {
+      ticketId: id,
+      contactId: contactId,
+      userId: req.user?.id,
+      userRole: req.user?.role
+    });
+    
+    // Get ticket
+    const ticket = await Ticket.findByPk(id);
+    
+    if (!ticket) {
+      logger.error('❌ УДАЛЕНИЕ КОНТАКТА - Тикет не найден', {
+        ticketId: id,
+        userId: req.user?.id
+      });
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+    
+    // Role-based access control
+    if (req.user.role === 'client' && ticket.createdById !== req.user.id) {
+      logger.warn('❌ УДАЛЕНИЕ КОНТАКТА - Доступ запрещен для клиента', {
+        ticketId: id,
+        userId: req.user?.id,
+        ticketCreatedById: ticket.createdById
+      });
+      return res.status(403).json({ message: 'Access denied. Only ticket creator, admins and agents can remove contacts.' });
+    }
+    
+    // Get contact
+    const contact = await TicketContact.findOne({
+      where: {
+        id: contactId,
+        ticketId: id
+      },
+      include: [
+        {
+          model: User,
+          as: 'contactUser',
+          attributes: ['id', 'username', 'firstName', 'lastName', 'email']
+        }
+      ]
+    });
+    
+    if (!contact) {
+      logger.error('❌ УДАЛЕНИЕ КОНТАКТА - Контакт не найден', {
+        ticketId: id,
+        contactId: contactId,
+        userId: req.user?.id
+      });
+      return res.status(404).json({ message: 'Contact not found' });
+    }
+    
+    // Store contact info for history
+    const contactUserName = `${contact.contactUser.firstName} ${contact.contactUser.lastName}`;
+    const contactRole = contact.role;
+    
+    // Delete contact
+    await contact.destroy();
+    
+    // Create history entry
+    try {
+      await TicketHistory.create({
+        ticketId: ticket.id,
+        userId: req.user.id,
+        field: 'contact',
+        oldValue: `${contactUserName} as ${contactRole}`,
+        action: 'contact_remove'
+      });
+    } catch (historyError) {
+      logger.error('❌ УДАЛЕНИЕ КОНТАКТА - Ошибка создания истории:', {
+        ticketId: id,
+        error: historyError.message
+      });
+    }
+    
+    logger.info('✅ УДАЛЕНИЕ КОНТАКТА - Контакт успешно удален', {
+      ticketId: id,
+      contactId: contactId,
+      contactName: contactUserName,
+      userId: req.user?.id
+    });
+    
+    res.status(200).json({
+      message: 'Contact removed successfully'
+    });
+  } catch (error) {
+    logger.error('❌ УДАЛЕНИЕ КОНТАКТА - Критическая ошибка:', {
+      ticketId: req.params.id,
+      contactId: req.params.contactId,
+      userId: req.user?.id,
+      error: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({
+      message: 'Error removing contact',
+      error: process.env.NODE_ENV === 'production' ? {} : error.message
+    });
+  }
+};
+
+/**
+ * Update contact person settings
+ * Admin, agent and ticket creator only
+ */
+exports.updateTicketContact = async (req, res) => {
+  try {
+    const { id, contactId } = req.params;
+    const { role, notifyOnStatusChange, notifyOnComments, notifyOnAssignment } = req.body;
+    
+    logger.info('👥 ОБНОВЛЕНИЕ КОНТАКТА - Начало процесса', {
+      ticketId: id,
+      contactId: contactId,
+      userId: req.user?.id,
+      userRole: req.user?.role,
+      requestBody: req.body
+    });
+    
+    // Get ticket
+    const ticket = await Ticket.findByPk(id);
+    
+    if (!ticket) {
+      logger.error('❌ ОБНОВЛЕНИЕ КОНТАКТА - Тикет не найден', {
+        ticketId: id,
+        userId: req.user?.id
+      });
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+    
+    // Role-based access control
+    if (req.user.role === 'client' && ticket.createdById !== req.user.id) {
+      logger.warn('❌ ОБНОВЛЕНИЕ КОНТАКТА - Доступ запрещен для клиента', {
+        ticketId: id,
+        userId: req.user?.id,
+        ticketCreatedById: ticket.createdById
+      });
+      return res.status(403).json({ message: 'Access denied. Only ticket creator, admins and agents can update contacts.' });
+    }
+    
+    // Get contact
+    const contact = await TicketContact.findOne({
+      where: {
+        id: contactId,
+        ticketId: id
+      }
+    });
+    
+    if (!contact) {
+      logger.error('❌ ОБНОВЛЕНИЕ КОНТАКТА - Контакт не найден', {
+        ticketId: id,
+        contactId: contactId,
+        userId: req.user?.id
+      });
+      return res.status(404).json({ message: 'Contact not found' });
+    }
+    
+    // Store old values for history
+    const oldValues = {
+      role: contact.role,
+      notifyOnStatusChange: contact.notifyOnStatusChange,
+      notifyOnComments: contact.notifyOnComments,
+      notifyOnAssignment: contact.notifyOnAssignment
+    };
+    
+    // Update contact
+    if (role !== undefined) contact.role = role;
+    if (notifyOnStatusChange !== undefined) contact.notifyOnStatusChange = notifyOnStatusChange;
+    if (notifyOnComments !== undefined) contact.notifyOnComments = notifyOnComments;
+    if (notifyOnAssignment !== undefined) contact.notifyOnAssignment = notifyOnAssignment;
+    
+    await contact.save();
+    
+    // Create history entry if role changed
+    if (role !== undefined && role !== oldValues.role) {
+      try {
+        await TicketHistory.create({
+          ticketId: ticket.id,
+          userId: req.user.id,
+          field: 'contact_role',
+          oldValue: oldValues.role,
+          newValue: role,
+          action: 'contact_update'
+        });
+      } catch (historyError) {
+        logger.error('❌ ОБНОВЛЕНИЕ КОНТАКТА - Ошибка создания истории:', {
+          ticketId: id,
+          error: historyError.message
+        });
+      }
+    }
+    
+    // Get updated contact with user data
+    const updatedContact = await TicketContact.findByPk(contact.id, {
+      include: [
+        {
+          model: User,
+          as: 'contactUser',
+          attributes: ['id', 'username', 'firstName', 'lastName', 'email']
+        },
+        {
+          model: User,
+          as: 'addedBy',
+          attributes: ['id', 'username', 'firstName', 'lastName']
+        }
+      ]
+    });
+    
+    logger.info('✅ ОБНОВЛЕНИЕ КОНТАКТА - Контакт успешно обновлен', {
+      ticketId: id,
+      contactId: contactId,
+      changes: contact.changed(),
+      userId: req.user?.id
+    });
+    
+    res.status(200).json({
+      message: 'Contact updated successfully',
+      contact: updatedContact
+    });
+  } catch (error) {
+    logger.error('❌ ОБНОВЛЕНИЕ КОНТАКТА - Критическая ошибка:', {
+      ticketId: req.params.id,
+      contactId: req.params.contactId,
+      userId: req.user?.id,
+      error: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({
+      message: 'Error updating contact',
+      error: process.env.NODE_ENV === 'production' ? {} : error.message
+    });
+  }
+};
+
+/**
+ * Get ticket contacts
+ * All authenticated users can view contacts of tickets they have access to
+ */
+exports.getTicketContacts = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    logger.info('👥 ПОЛУЧЕНИЕ КОНТАКТОВ - Запрос списка контактов', {
+      ticketId: id,
+      userId: req.user?.id,
+      userRole: req.user?.role
+    });
+    
+    // Get ticket
+    const ticket = await Ticket.findByPk(id);
+    
+    if (!ticket) {
+      logger.error('❌ ПОЛУЧЕНИЕ КОНТАКТОВ - Тикет не найден', {
+        ticketId: id,
+        userId: req.user?.id
+      });
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+    
+    // Role-based access control
+    if (req.user.role === 'client' && ticket.createdById !== req.user.id) {
+      logger.warn('❌ ПОЛУЧЕНИЕ КОНТАКТОВ - Доступ запрещен для клиента', {
+        ticketId: id,
+        userId: req.user?.id,
+        ticketCreatedById: ticket.createdById
+      });
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    // Get contacts
+    const contacts = await TicketContact.findAll({
+      where: {
+        ticketId: id
+      },
+      include: [
+        {
+          model: User,
+          as: 'contactUser',
+          attributes: ['id', 'username', 'firstName', 'lastName', 'email', 'role']
+        },
+        {
+          model: User,
+          as: 'addedBy',
+          attributes: ['id', 'username', 'firstName', 'lastName']
+        }
+      ],
+      order: [['createdAt', 'ASC']]
+    });
+    
+    logger.info('✅ ПОЛУЧЕНИЕ КОНТАКТОВ - Список получен', {
+      ticketId: id,
+      contactsCount: contacts.length,
+      userId: req.user?.id
+    });
+    
+    res.status(200).json({
+      contacts: contacts
+    });
+  } catch (error) {
+    logger.error('❌ ПОЛУЧЕНИЕ КОНТАКТОВ - Критическая ошибка:', {
+      ticketId: req.params.id,
+      userId: req.user?.id,
+      error: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({
+      message: 'Error getting contacts',
       error: process.env.NODE_ENV === 'production' ? {} : error.message
     });
   }

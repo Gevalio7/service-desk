@@ -27,7 +27,7 @@ import {
   AccessTime as TimeIcon
 } from '@mui/icons-material';
 import Chart from 'react-apexcharts';
-import axios from 'axios';
+import axios from '../utils/axios';
 import { format, parseISO, subDays } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
@@ -97,6 +97,13 @@ const Dashboard = () => {
               avgResolutionTime: 0,
               slaComplianceRate: 100,
               responseComplianceRate: 100,
+              statusBreakdown: {
+                new: 0,
+                open: 0,
+                in_progress: 0,
+                resolved: 0,
+                closed: 0
+              },
               priorityMetrics: {
                 urgent: { total: 0, resolved: 0, slaBreaches: 0, responseBreaches: 0 },
                 high: { total: 0, resolved: 0, slaBreaches: 0, responseBreaches: 0 },
@@ -121,6 +128,15 @@ const Dashboard = () => {
             const totalTickets = tickets.length;
             const resolvedTickets = tickets.filter(t => ['resolved', 'closed'].includes(t.status)).length;
             
+            // Calculate status breakdown for clients
+            const statusBreakdown = {
+              new: tickets.filter(t => t.status === 'new').length,
+              open: tickets.filter(t => t.status === 'open').length,
+              in_progress: tickets.filter(t => t.status === 'in_progress').length,
+              resolved: tickets.filter(t => t.status === 'resolved').length,
+              closed: tickets.filter(t => t.status === 'closed').length
+            };
+            
             setMetrics({
               totalTickets,
               resolvedTickets,
@@ -130,6 +146,7 @@ const Dashboard = () => {
               avgResolutionTime: 0,
               slaComplianceRate: 100,
               responseComplianceRate: 100,
+              statusBreakdown,
               priorityMetrics: {
                 urgent: { total: 0, resolved: 0, slaBreaches: 0, responseBreaches: 0 },
                 high: { total: 0, resolved: 0, slaBreaches: 0, responseBreaches: 0 },
@@ -149,6 +166,13 @@ const Dashboard = () => {
               avgResolutionTime: 0,
               slaComplianceRate: 100,
               responseComplianceRate: 100,
+              statusBreakdown: {
+                new: 0,
+                open: 0,
+                in_progress: 0,
+                resolved: 0,
+                closed: 0
+              },
               priorityMetrics: {
                 urgent: { total: 0, resolved: 0, slaBreaches: 0, responseBreaches: 0 },
                 high: { total: 0, resolved: 0, slaBreaches: 0, responseBreaches: 0 },
@@ -183,13 +207,30 @@ const Dashboard = () => {
   
   // Prepare chart data
   const prepareTicketStatusChart = () => {
-    if (!metrics) return null;
+    if (!metrics || !metrics.statusBreakdown) return null;
+    
+    const statusData = [
+      metrics.statusBreakdown.new,
+      metrics.statusBreakdown.open,
+      metrics.statusBreakdown.in_progress,
+      metrics.statusBreakdown.resolved,
+      metrics.statusBreakdown.closed
+    ];
+    
+    // Only show chart if there's data
+    if (statusData.every(value => value === 0)) return null;
     
     return {
-      series: [metrics.resolvedTickets, metrics.totalTickets - metrics.resolvedTickets],
+      series: statusData,
       options: {
-        labels: ['Решенные', 'Открытые'],
-        colors: [theme.palette.success.main, theme.palette.info.main],
+        labels: ['Новые', 'Открытые', 'В работе', 'Решенные', 'Закрытые'],
+        colors: [
+          theme.palette.info.main,
+          theme.palette.info.light,
+          theme.palette.warning.main,
+          theme.palette.success.main,
+          theme.palette.success.dark
+        ],
         legend: {
           position: 'bottom'
         },
@@ -434,9 +475,9 @@ const Dashboard = () => {
       
       {/* Metrics cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={12}>
           <Card>
-            <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
+            <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Avatar sx={{ bgcolor: theme.palette.primary.main, mr: 2 }}>
                 <TicketIcon />
               </Avatar>
@@ -452,7 +493,65 @@ const Dashboard = () => {
           </Card>
         </Grid>
         
-        <Grid item xs={12} sm={6} md={3}>
+        {/* Status breakdown cards */}
+        {/* Show "Новые заявки" only for staff */}
+        {(user.role === 'admin' || user.role === 'agent') && (
+          <Grid item xs={12} sm={6} md={2.4}>
+            <Card>
+              <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
+                <Avatar sx={{ bgcolor: theme.palette.info.main, mr: 2 }}>
+                  <TicketIcon />
+                </Avatar>
+                <Box>
+                  <Typography variant="body2" color="text.secondary">
+                    Новые заявки
+                  </Typography>
+                  <Typography variant="h4">
+                    {metrics?.statusBreakdown?.new || 0}
+                  </Typography>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        )}
+        
+        <Grid item xs={12} sm={6} md={user.role === 'client' ? 3 : 2.4}>
+          <Card>
+            <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
+              <Avatar sx={{ bgcolor: theme.palette.info.light, mr: 2 }}>
+                <TicketIcon />
+              </Avatar>
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  Открытые заявки
+                </Typography>
+                <Typography variant="h4">
+                  {metrics?.statusBreakdown?.open || 0}
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        <Grid item xs={12} sm={6} md={user.role === 'client' ? 3 : 2.4}>
+          <Card>
+            <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
+              <Avatar sx={{ bgcolor: theme.palette.warning.main, mr: 2 }}>
+                <WarningIcon />
+              </Avatar>
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  В работе
+                </Typography>
+                <Typography variant="h4">
+                  {metrics?.statusBreakdown?.in_progress || 0}
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        <Grid item xs={12} sm={6} md={user.role === 'client' ? 3 : 2.4}>
           <Card>
             <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
               <Avatar sx={{ bgcolor: theme.palette.success.main, mr: 2 }}>
@@ -463,13 +562,31 @@ const Dashboard = () => {
                   Решенные заявки
                 </Typography>
                 <Typography variant="h4">
-                  {metrics?.resolvedTickets || 0}
+                  {metrics?.statusBreakdown?.resolved || 0}
                 </Typography>
               </Box>
             </CardContent>
           </Card>
         </Grid>
         
+        <Grid item xs={12} sm={6} md={user.role === 'client' ? 3 : 2.4}>
+          <Card>
+            <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
+              <Avatar sx={{ bgcolor: theme.palette.success.dark, mr: 2 }}>
+                <ResolvedIcon />
+              </Avatar>
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  Закрытые заявки
+                </Typography>
+                <Typography variant="h4">
+                  {metrics?.statusBreakdown?.closed || 0}
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
         {/* Show SLA metrics only for staff */}
         {(user.role === 'admin' || user.role === 'agent') && (
           <>
@@ -512,27 +629,26 @@ const Dashboard = () => {
         )}
       </Grid>
       
-      {/* Charts */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={user.role === 'client' ? 12 : 4}>
-          <Card sx={{ height: '100%' }}>
-            <CardHeader title="Статус заявок" />
-            <Divider />
-            <CardContent>
-              {ticketStatusChart && (
-                <Chart
-                  options={ticketStatusChart.options}
-                  series={ticketStatusChart.series}
-                  type="pie"
-                  height={300}
-                />
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        {/* Show SLA compliance chart only for staff */}
-        {(user.role === 'admin' || user.role === 'agent') && (
+      {/* Charts - only for staff */}
+      {(user.role === 'admin' || user.role === 'agent') && (
+        <Grid container spacing={3} sx={{ mb: 3 }}>
+          <Grid item xs={12} md={4}>
+            <Card sx={{ height: '100%' }}>
+              <CardHeader title="Статус заявок" />
+              <Divider />
+              <CardContent>
+                {ticketStatusChart && (
+                  <Chart
+                    options={ticketStatusChart.options}
+                    series={ticketStatusChart.series}
+                    type="pie"
+                    height={300}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+          
           <Grid item xs={12} md={8}>
             <Card sx={{ height: '100%' }}>
               <CardHeader title="Соблюдение SLA по приоритетам" />
@@ -549,12 +665,12 @@ const Dashboard = () => {
               </CardContent>
             </Card>
           </Grid>
-        )}
-      </Grid>
+        </Grid>
+      )}
       
       {/* Recent tickets and response time */}
       <Grid container spacing={3}>
-        <Grid item xs={12} md={user.role === 'client' ? 12 : 8}>
+        <Grid item xs={12} md={(user.role === 'admin' || user.role === 'agent') ? 8 : 12}>
           <Card>
             <CardHeader 
               title="Последние заявки" 

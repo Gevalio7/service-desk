@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -20,7 +20,8 @@ import {
   Divider,
   Card,
   CardContent,
-  useTheme
+  useTheme,
+  Collapse
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -32,10 +33,12 @@ import {
   Clear as ClearIcon,
   Search as SearchIcon,
   GetApp as ExportIcon,
-  Refresh as RefreshIcon
+  Refresh as RefreshIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon
 } from '@mui/icons-material';
 import { format } from 'date-fns';
-import axios from 'axios';
+import axios from '../utils/axios';
 
 import { useAuth } from '../contexts/AuthContext';
 
@@ -50,6 +53,7 @@ const TicketList = () => {
   const [error, setError] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
   const [users, setUsers] = useState([]);
+  const [expandedDescriptions, setExpandedDescriptions] = useState(new Set());
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 10,
@@ -62,6 +66,7 @@ const TicketList = () => {
     status: '',
     priority: '',
     category: '',
+    type: '',
     assignedToId: '',
     createdById: '',
     startDate: null,
@@ -71,7 +76,7 @@ const TicketList = () => {
   });
   
   // Fetch tickets
-  const fetchTickets = async () => {
+  const fetchTickets = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -88,6 +93,7 @@ const TicketList = () => {
       if (filters.status) params.status = filters.status;
       if (filters.priority) params.priority = filters.priority;
       if (filters.category) params.category = filters.category;
+      if (filters.type) params.type = filters.type;
       if (filters.assignedToId) params.assignedToId = filters.assignedToId;
       if (filters.createdById) params.createdById = filters.createdById;
       if (filters.search) params.search = filters.search;
@@ -122,7 +128,7 @@ const TicketList = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [pagination.page, pagination.limit, filters, user.role, user.id]);
   
   // Fetch users for filters
   const fetchUsers = async () => {
@@ -148,6 +154,38 @@ const TicketList = () => {
     fetchTickets();
     fetchUsers();
   }, [pagination.page, user.role]);
+
+  // Refresh data when page becomes visible (user returns from ticket details)
+  useEffect(() => {
+    let timeoutId;
+    
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        // Добавляем небольшую задержку чтобы избежать частых обновлений
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+          fetchTickets();
+        }, 500);
+      }
+    };
+
+    const handleFocus = () => {
+      // Добавляем небольшую задержку чтобы избежать частых обновлений
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        fetchTickets();
+      }, 500);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [fetchTickets]);
   
   // Handle page change
   const handlePageChange = (event, value) => {
@@ -189,6 +227,7 @@ const TicketList = () => {
       status: '',
       priority: '',
       category: '',
+      type: '',
       assignedToId: '',
       createdById: '',
       startDate: null,
@@ -329,17 +368,76 @@ const TicketList = () => {
   // Translate category
   const translateCategory = (category) => {
     switch (category) {
-      case 'incident':
-        return 'Инцидент';
-      case 'request':
-        return 'Запрос';
-      case 'problem':
-        return 'Проблема';
-      case 'change':
-        return 'Изменение';
+      case 'technical':
+        return 'Техническая проблема';
+      case 'billing':
+        return 'Вопросы по оплате';
+      case 'general':
+        return 'Общие вопросы';
+      case 'feature_request':
+        return 'Запрос функции';
       default:
         return category;
     }
+  };
+
+  // Translate type
+  const translateType = (type) => {
+    switch (type) {
+      case 'incident':
+        return 'Инцидент';
+      case 'service_request':
+        return 'Запрос на обслуживание';
+      case 'change_request':
+        return 'Запрос на изменение';
+      default:
+        return type;
+    }
+  };
+
+  // Get type color
+  const getTypeColor = (type) => {
+    switch (type) {
+      case 'incident':
+        return theme.palette.error.main;
+      case 'service_request':
+        return theme.palette.primary.main;
+      case 'change_request':
+        return theme.palette.info.main;
+      default:
+        return theme.palette.grey[500];
+    }
+  };
+
+  // Toggle description expansion
+  const toggleDescriptionExpansion = (ticketId, event) => {
+    event.stopPropagation(); // Prevent card click navigation
+    const newExpanded = new Set(expandedDescriptions);
+    if (newExpanded.has(ticketId)) {
+      newExpanded.delete(ticketId);
+    } else {
+      newExpanded.add(ticketId);
+    }
+    setExpandedDescriptions(newExpanded);
+  };
+
+  // Check if description should be truncated
+  const shouldTruncateDescription = (description) => {
+    return description && description.length > 100;
+  };
+
+  // Get truncated description
+  const getTruncatedDescription = (description, ticketId) => {
+    if (!description) return '';
+    
+    const isExpanded = expandedDescriptions.has(ticketId);
+    const shouldTruncate = shouldTruncateDescription(description);
+    
+    if (!shouldTruncate || isExpanded) {
+      return description;
+    }
+    
+    return description.substring(0, 100) + '...';
   };
   
   return (
@@ -439,6 +537,25 @@ const TicketList = () => {
             
             <Grid item xs={12} sm={6} md={3}>
               <FormControl fullWidth variant="outlined" size="small">
+                <InputLabel id="type-label">Тип запроса</InputLabel>
+                <Select
+                  labelId="type-label"
+                  id="type"
+                  name="type"
+                  value={filters.type}
+                  onChange={handleFilterChange}
+                  label="Тип запроса"
+                >
+                  <MenuItem value="">Все</MenuItem>
+                  <MenuItem value="incident">Инцидент</MenuItem>
+                  <MenuItem value="service_request">Запрос на обслуживание</MenuItem>
+                  <MenuItem value="change_request">Запрос на изменение</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} sm={6} md={3}>
+              <FormControl fullWidth variant="outlined" size="small">
                 <InputLabel id="category-label">Категория</InputLabel>
                 <Select
                   labelId="category-label"
@@ -449,10 +566,10 @@ const TicketList = () => {
                   label="Категория"
                 >
                   <MenuItem value="">Все</MenuItem>
-                  <MenuItem value="incident">Инцидент</MenuItem>
-                  <MenuItem value="request">Запрос</MenuItem>
-                  <MenuItem value="problem">Проблема</MenuItem>
-                  <MenuItem value="change">Изменение</MenuItem>
+                  <MenuItem value="technical">Техническая проблема</MenuItem>
+                  <MenuItem value="billing">Вопросы по оплате</MenuItem>
+                  <MenuItem value="general">Общие вопросы</MenuItem>
+                  <MenuItem value="feature_request">Запрос функции</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -614,86 +731,214 @@ const TicketList = () => {
                   }}
                   onClick={() => navigate(`/tickets/${ticket.id}`)}
                 >
-                  <CardContent>
-                    <Grid container spacing={2}>
-                      <Grid item xs={12} sm={8}>
-                        <Typography variant="h6" component="div" gutterBottom>
+                  <CardContent sx={{ pb: 2 }}>
+                    <Grid container spacing={2} sx={{
+                      alignItems: 'flex-start',
+                      justifyContent: 'space-between'
+                    }}>
+                      <Grid item xs={12} md={8}>
+                        {/* Title with proper word wrapping */}
+                        <Typography
+                          variant="h6"
+                          component="div"
+                          gutterBottom
+                          sx={{
+                            wordWrap: 'break-word',
+                            overflowWrap: 'break-word',
+                            hyphens: 'auto',
+                            lineHeight: 1.3,
+                            mb: 1.5
+                          }}
+                        >
                           {ticket.title}
                         </Typography>
                         
-                        <Typography variant="body2" color="text.secondary" gutterBottom>
-                          {ticket.description.substring(0, 200)}
-                          {ticket.description.length > 200 ? '...' : ''}
-                        </Typography>
+                        {/* Description with expand/collapse functionality */}
+                        {ticket.description && (
+                          <Box sx={{ mb: 2 }}>
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{
+                                wordWrap: 'break-word',
+                                overflowWrap: 'break-word',
+                                whiteSpace: 'pre-wrap',
+                                lineHeight: 1.4
+                              }}
+                            >
+                              {getTruncatedDescription(ticket.description, ticket.id)}
+                            </Typography>
+                            
+                            {shouldTruncateDescription(ticket.description) && (
+                              <Button
+                                size="small"
+                                onClick={(e) => toggleDescriptionExpansion(ticket.id, e)}
+                                startIcon={
+                                  expandedDescriptions.has(ticket.id) ?
+                                    <ExpandLessIcon /> :
+                                    <ExpandMoreIcon />
+                                }
+                                sx={{
+                                  mt: 0.5,
+                                  p: 0.5,
+                                  minWidth: 'auto',
+                                  fontSize: '0.75rem'
+                                }}
+                              >
+                                {expandedDescriptions.has(ticket.id) ? 'Свернуть' : 'Развернуть'}
+                              </Button>
+                            )}
+                          </Box>
+                        )}
                         
-                        <Box sx={{ mt: 1 }}>
+                        {/* Tags and status chips with proper wrapping */}
+                        <Box sx={{
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: 0.5,
+                          alignItems: 'center'
+                        }}>
+                          <Chip
+                            label={translateType(ticket.type)}
+                            size="small"
+                            sx={{
+                              bgcolor: getTypeColor(ticket.type),
+                              color: 'white',
+                              fontWeight: 500
+                            }}
+                          />
+                          
                           <Chip
                             label={translateStatus(ticket.status)}
                             size="small"
-                            sx={{ 
-                              mr: 1, 
+                            sx={{
                               bgcolor: getStatusColor(ticket.status),
-                              color: 'white'
+                              color: 'white',
+                              fontWeight: 500
                             }}
                           />
                           
                           <Chip
                             label={translatePriority(ticket.priority)}
                             size="small"
-                            sx={{ 
-                              mr: 1, 
+                            sx={{
                               bgcolor: getPriorityColor(ticket.priority),
-                              color: 'white'
+                              color: 'white',
+                              fontWeight: 500
                             }}
                           />
                           
                           <Chip
                             label={translateCategory(ticket.category)}
                             size="small"
-                            sx={{ mr: 1 }}
+                            variant="outlined"
                           />
                           
-                          {ticket.tags && ticket.tags.map((tag) => (
+                          {ticket.tags && ticket.tags.slice(0, 3).map((tag) => (
                             <Chip
                               key={tag}
                               label={tag}
                               size="small"
-                              sx={{ mr: 1 }}
+                              variant="outlined"
+                              sx={{
+                                maxWidth: '120px',
+                                '& .MuiChip-label': {
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis'
+                                }
+                              }}
                             />
                           ))}
+                          
+                          {ticket.tags && ticket.tags.length > 3 && (
+                            <Chip
+                              label={`+${ticket.tags.length - 3}`}
+                              size="small"
+                              variant="outlined"
+                              sx={{ opacity: 0.7 }}
+                            />
+                          )}
                         </Box>
                       </Grid>
                       
-                      <Grid item xs={12} sm={4}>
-                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                          <Typography variant="caption" color="text.secondary">
+                      <Grid item xs={12} md={4} sx={{
+                        display: 'flex',
+                        justifyContent: 'flex-end'
+                      }}>
+                        <Box sx={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'flex-end',
+                          gap: 0.5,
+                          minHeight: '100px',
+                          justifyContent: 'flex-start',
+                          width: 'auto'
+                        }}>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{
+                              fontFamily: 'monospace',
+                              bgcolor: 'grey.100',
+                              px: 0.5,
+                              py: 0.25,
+                              borderRadius: 0.5,
+                              fontSize: '0.7rem'
+                            }}
+                          >
                             ID: {ticket.id.substring(0, 8)}
                           </Typography>
                           
-                          <Typography variant="caption" color="text.secondary">
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ whiteSpace: 'nowrap' }}
+                          >
                             Создана: {format(new Date(ticket.createdAt), 'dd.MM.yyyy HH:mm')}
                           </Typography>
                           
                           {ticket.createdBy && (
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{
+                                maxWidth: '200px',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
                               Автор: {ticket.createdBy.firstName} {ticket.createdBy.lastName}
                             </Typography>
                           )}
                           
                           {ticket.assignedTo && (
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{
+                                maxWidth: '200px',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
                               Назначена: {ticket.assignedTo.firstName} {ticket.assignedTo.lastName}
                             </Typography>
                           )}
                           
                           {ticket.slaDeadline && (
-                            <Typography 
-                              variant="caption" 
+                            <Typography
+                              variant="caption"
                               color={
-                                new Date() > new Date(ticket.slaDeadline) 
-                                  ? 'error.main' 
+                                new Date() > new Date(ticket.slaDeadline)
+                                  ? 'error.main'
                                   : 'text.secondary'
                               }
+                              sx={{
+                                whiteSpace: 'nowrap',
+                                fontWeight: new Date() > new Date(ticket.slaDeadline) ? 600 : 400
+                              }}
                             >
                               SLA: {format(new Date(ticket.slaDeadline), 'dd.MM.yyyy HH:mm')}
                             </Typography>

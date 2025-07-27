@@ -22,10 +22,16 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+    files: 5 // Maximum 5 files
   },
   fileFilter: function (req, file, cb) {
     // Allow all file types for now, but you can restrict if needed
+    console.log('📎 MULTER - Обработка файла:', {
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size
+    });
     cb(null, true);
   }
 });
@@ -108,6 +114,18 @@ router.get(
     query('endDate').optional().isDate()
   ],
   ticketController.exportTickets
+);
+
+/**
+ * @route GET /api/tickets/assignees/available
+ * @desc Get available assignees (admins and agents)
+ * @access Private (Admin and Agent only)
+ */
+router.get(
+  '/assignees/available',
+  authenticate,
+  isStaff,
+  ticketController.getAvailableAssignees
 );
 
 /**
@@ -209,6 +227,89 @@ router.delete(
     param('attachmentId').notEmpty().withMessage('Attachment ID is required')
   ],
   ticketController.deleteAttachment
+);
+
+/**
+ * @route PUT /api/tickets/:id/assign
+ * @desc Assign ticket to user
+ * @access Private (Admin and Agent only)
+ */
+router.put(
+  '/:id/assign',
+  authenticate,
+  isStaff,
+  [
+    param('id').notEmpty().withMessage('Ticket ID is required').isUUID().withMessage('Ticket ID must be a valid UUID'),
+    body('assignedToId').optional().isUUID().withMessage('Assigned user ID must be a valid UUID')
+  ],
+  ticketController.assignTicket
+);
+
+/**
+ * @route GET /api/tickets/:id/contacts
+ * @desc Get ticket contacts
+ * @access Private
+ */
+router.get(
+  '/:id/contacts',
+  authenticate,
+  [
+    param('id').notEmpty().withMessage('Ticket ID is required').isUUID().withMessage('Ticket ID must be a valid UUID')
+  ],
+  ticketController.getTicketContacts
+);
+
+/**
+ * @route POST /api/tickets/:id/contacts
+ * @desc Add contact person to ticket
+ * @access Private (Admin, Agent and Ticket Creator only)
+ */
+router.post(
+  '/:id/contacts',
+  authenticate,
+  [
+    param('id').notEmpty().withMessage('Ticket ID is required').isUUID().withMessage('Ticket ID must be a valid UUID'),
+    body('userId').notEmpty().withMessage('User ID is required').isUUID().withMessage('User ID must be a valid UUID'),
+    body('role').optional().isIn(['watcher', 'additional_responsible', 'cc']).withMessage('Invalid role'),
+    body('notifyOnStatusChange').optional().isBoolean(),
+    body('notifyOnComments').optional().isBoolean(),
+    body('notifyOnAssignment').optional().isBoolean()
+  ],
+  ticketController.addTicketContact
+);
+
+/**
+ * @route PUT /api/tickets/:id/contacts/:contactId
+ * @desc Update contact person settings
+ * @access Private (Admin, Agent and Ticket Creator only)
+ */
+router.put(
+  '/:id/contacts/:contactId',
+  authenticate,
+  [
+    param('id').notEmpty().withMessage('Ticket ID is required').isUUID().withMessage('Ticket ID must be a valid UUID'),
+    param('contactId').notEmpty().withMessage('Contact ID is required').isUUID().withMessage('Contact ID must be a valid UUID'),
+    body('role').optional().isIn(['watcher', 'additional_responsible', 'cc']).withMessage('Invalid role'),
+    body('notifyOnStatusChange').optional().isBoolean(),
+    body('notifyOnComments').optional().isBoolean(),
+    body('notifyOnAssignment').optional().isBoolean()
+  ],
+  ticketController.updateTicketContact
+);
+
+/**
+ * @route DELETE /api/tickets/:id/contacts/:contactId
+ * @desc Remove contact person from ticket
+ * @access Private (Admin, Agent and Ticket Creator only)
+ */
+router.delete(
+  '/:id/contacts/:contactId',
+  authenticate,
+  [
+    param('id').notEmpty().withMessage('Ticket ID is required').isUUID().withMessage('Ticket ID must be a valid UUID'),
+    param('contactId').notEmpty().withMessage('Contact ID is required').isUUID().withMessage('Contact ID must be a valid UUID')
+  ],
+  ticketController.removeTicketContact
 );
 
 module.exports = router;

@@ -4,6 +4,7 @@ const Comment = require('./Comment');
 const Attachment = require('./Attachment');
 const TicketHistory = require('./TicketHistory');
 const Notification = require('./Notification');
+const TicketContact = require('./TicketContact');
 
 // Define relationships
 
@@ -87,11 +88,56 @@ Notification.belongsTo(User, {
   foreignKey: 'userId'
 });
 
+// Ticket - TicketContact relationships (many-to-many через промежуточную таблицу)
+Ticket.hasMany(TicketContact, {
+  foreignKey: 'ticketId',
+  onDelete: 'CASCADE'
+});
+TicketContact.belongsTo(Ticket, {
+  foreignKey: 'ticketId'
+});
+
+// User - TicketContact relationships
+User.hasMany(TicketContact, {
+  as: 'contactTickets',
+  foreignKey: 'userId',
+  onDelete: 'CASCADE'
+});
+TicketContact.belongsTo(User, {
+  as: 'contactUser',
+  foreignKey: 'userId'
+});
+
+// User - TicketContact relationships (кто добавил контакт)
+User.hasMany(TicketContact, {
+  as: 'addedContacts',
+  foreignKey: 'addedById'
+});
+TicketContact.belongsTo(User, {
+  as: 'addedBy',
+  foreignKey: 'addedById'
+});
+
+// Связь многие-ко-многим между Ticket и User через TicketContact
+Ticket.belongsToMany(User, {
+  through: TicketContact,
+  as: 'contacts',
+  foreignKey: 'ticketId',
+  otherKey: 'userId'
+});
+User.belongsToMany(Ticket, {
+  through: TicketContact,
+  as: 'watchedTickets',
+  foreignKey: 'userId',
+  otherKey: 'ticketId'
+});
+
 module.exports = {
   User,
   Ticket,
   Comment,
   Attachment,
   TicketHistory,
-  Notification
+  Notification,
+  TicketContact
 };

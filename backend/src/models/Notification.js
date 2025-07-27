@@ -17,10 +17,11 @@ const Notification = sequelize.define('Notification', {
   },
   type: {
     type: DataTypes.ENUM(
-      'ticket_update', 
-      'ticket_assigned', 
-      'new_comment', 
-      'sla_breach', 
+      'new_ticket',
+      'ticket_update',
+      'ticket_assigned',
+      'new_comment',
+      'sla_breach',
       'sla_warning',
       'response_breach',
       'response_warning'

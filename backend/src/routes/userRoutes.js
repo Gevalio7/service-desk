@@ -35,7 +35,7 @@ router.get(
   '/:id',
   authenticate,
   [
-    param('id').isUUID().withMessage('Invalid user ID')
+    param('id').notEmpty().withMessage('User ID is required')
   ],
   userController.getUserById
 );
@@ -72,7 +72,7 @@ router.put(
   '/:id',
   authenticate,
   [
-    param('id').isUUID().withMessage('Invalid user ID'),
+    param('id').notEmpty().withMessage('User ID is required'),
     body('firstName').optional(),
     body('lastName').optional(),
     body('role').optional().isIn(['admin', 'agent', 'client']),
@@ -94,7 +94,7 @@ router.delete(
   authenticate,
   isAdmin,
   [
-    param('id').isUUID().withMessage('Invalid user ID')
+    param('id').notEmpty().withMessage('User ID is required')
   ],
   userController.deleteUser
 );
@@ -108,11 +108,25 @@ router.put(
   '/:id/password',
   authenticate,
   [
-    param('id').isUUID().withMessage('Invalid user ID'),
+    param('id').notEmpty().withMessage('User ID is required'),
     body('currentPassword').optional(),
     body('newPassword').isLength({ min: 6 }).withMessage('New password must be at least 6 characters')
   ],
   userController.changePassword
+);
+
+/**
+ * @route GET /api/users/:id/activity
+ * @desc Get user activity log
+ * @access Private (Admin, agent, or self)
+ */
+router.get(
+  '/:id/activity',
+  authenticate,
+  [
+    param('id').notEmpty().withMessage('User ID is required')
+  ],
+  userController.getUserActivity
 );
 
 module.exports = router;

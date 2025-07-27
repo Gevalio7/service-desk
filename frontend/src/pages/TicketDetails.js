@@ -28,7 +28,8 @@ import {
   Alert,
   Modal,
   Backdrop,
-  Fade
+  Fade,
+  Tooltip
 } from '@mui/material';
 import {
   ArrowBack,
@@ -43,10 +44,13 @@ import {
   InsertDriveFile,
   Image,
   PictureAsPdf,
-  Description
+  Description,
+  Visibility
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import axios from '../utils/axios';
+import ConfirmDialog from '../components/ConfirmDialog';
+import ImagePreview, { ImageThumbnail } from '../components/ImagePreview';
 
 const TicketDetails = () => {
   const { id } = useParams();
@@ -62,6 +66,26 @@ const TicketDetails = () => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editedTicket, setEditedTicket] = useState({});
   const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [availableAssignees, setAvailableAssignees] = useState([]);
+  const [selectedAssignee, setSelectedAssignee] = useState('');
+  const [assigningTicket, setAssigningTicket] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState({
+    open: false,
+    title: '',
+    message: '',
+    onConfirm: null,
+    itemName: '',
+    itemType: 'элемент'
+  });
+  const [imagePreview, setImagePreview] = useState({
+    open: false,
+    imageUrl: '',
+    imageName: '',
+    attachmentId: null,
+    loading: false,
+    error: false
+  });
 
   useEffect(() => {
     fetchTicketDetails();
@@ -223,15 +247,37 @@ const TicketDetails = () => {
       console.log('📎 ЗАГРУЗКА ФАЙЛОВ - Начало процесса', {
         ticketId: id,
         ticketIdType: typeof id,
+        ticketIdLength: id ? id.length : 0,
+        ticketIdRaw: JSON.stringify(id),
         filesCount: files.length,
         fileNames: files.map(f => f.name),
-        url: `/api/tickets/${id}/attachments`
+        url: `/api/tickets/${id}/attachments`,
+        fullUrl: `${window.location.origin}/api/tickets/${id}/attachments`,
+        currentPath: window.location.pathname,
+        ticketFromParams: id
       });
       
       // Проверяем, что ID тикета корректный
       if (!id || id.trim() === '') {
-        console.error('❌ ЗАГРУЗКА ФАЙЛОВ - Некорректный ID тикета:', id);
+        console.error('❌ ЗАГРУЗКА ФАЙЛОВ - Некорректный ID тикета:', {
+          id: id,
+          idType: typeof id,
+          idLength: id ? id.length : 0,
+          windowLocation: window.location.href,
+          params: window.location.pathname.split('/')
+        });
         setError('Некорректный ID тикета');
+        return;
+      }
+
+      // Дополнительная проверка формата UUID
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(id)) {
+        console.error('❌ ЗАГРУЗКА ФАЙЛОВ - Некорректный формат UUID:', {
+          id: id,
+          isValidUUID: false
+        });
+        setError('Некорректный формат ID тикета');
         return;
       }
       
@@ -321,11 +367,18 @@ const TicketDetails = () => {
     }
   };
   
-  const handleFileDelete = async (attachmentId, originalName) => {
-    if (!window.confirm(`Вы уверены, что хотите удалить файл "${originalName}"?`)) {
-      return;
-    }
-    
+  const handleFileDelete = (attachmentId, originalName) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Удаление файла',
+      message: `Файл будет удален безвозвратно.`,
+      itemName: originalName,
+      itemType: 'файл',
+      onConfirm: () => confirmFileDelete(attachmentId, originalName)
+    });
+  };
+
+  const confirmFileDelete = async (attachmentId, originalName) => {
     try {
       console.log('Удаление файла:', attachmentId, originalName);
       
@@ -335,6 +388,9 @@ const TicketDetails = () => {
       setAttachments(attachments.filter(att => att.id !== attachmentId));
       
       console.log('Файл успешно удален:', originalName);
+      
+      // Закрываем диалог подтверждения
+      setConfirmDialog({ ...confirmDialog, open: false });
       
     } catch (err) {
       console.error('Ошибка удаления файла:', err);
@@ -347,6 +403,7 @@ const TicketDetails = () => {
       }
       
       setError(errorMessage);
+      setConfirmDialog({ ...confirmDialog, open: false });
     }
   };
   
@@ -361,6 +418,77 @@ const TicketDetails = () => {
       return <InsertDriveFile />;
     }
   };
+
+  const isImageFile = (mimeType) => {
+    return mimeType && mimeType.startsWith('image/');
+  };
+
+  const getImageUrl = async (attachmentId) => {
+    try {
+      const response = await axios.get(`/api/tickets/${id}/attachments/${attachmentId}`, {
+        responseType: 'blob'
+      });
+      return URL.createObjectURL(response.data);
+    } catch (error) {
+      console.error('Ошибка загрузки изображения:', error);
+      throw error;
+    }
+  };
+
+  const handleImagePreview = async (attachment) => {
+    try {
+      setImagePreview({
+        open: true,
+        imageUrl: '',
+        imageName: attachment.originalName,
+        attachmentId: attachment.id,
+        loading: true
+      });
+
+      const imageUrl = await getImageUrl(attachment.id);
+      
+      setImagePreview(prev => ({
+        ...prev,
+        imageUrl: imageUrl,
+        loading: false
+      }));
+    } catch (error) {
+      console.error('Ошибка предпросмотра изображения:', error);
+      setImagePreview(prev => ({
+        ...prev,
+        loading: false,
+        error: true
+      }));
+      setError('Не удалось загрузить изображение для предпросмотра');
+    }
+  };
+
+  const handleImageDownload = async (attachmentId, originalName) => {
+    await handleFileDownload(attachmentId, originalName);
+  };
+
+  const closeImagePreview = () => {
+    // Освобождаем blob URL если он был создан
+    if (imagePreview.imageUrl && imagePreview.imageUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(imagePreview.imageUrl);
+    }
+    
+    setImagePreview({
+      open: false,
+      imageUrl: '',
+      imageName: '',
+      attachmentId: null,
+      loading: false,
+      error: false
+    });
+  };
+
+  const closeConfirmDialog = () => {
+    setConfirmDialog({
+      ...confirmDialog,
+      open: false
+    });
+  };
   
   const formatFileSize = (bytes) => {
     if (bytes === 0) return '0 Bytes';
@@ -372,39 +500,174 @@ const TicketDetails = () => {
 
   const handleUpdateTicket = async () => {
     try {
-      console.log('Обновление тикета:', id, editedTicket);
+      console.log('🔄 ОБНОВЛЕНИЕ ТИКЕТА - Начало процесса', {
+        ticketId: id,
+        currentStatus: ticket.status,
+        newStatus: editedTicket.status,
+        changes: {
+          title: editedTicket.title,
+          description: editedTicket.description,
+          status: editedTicket.status,
+          priority: editedTicket.priority
+        }
+      });
       
-      const response = await axios.put(`/api/tickets/${id}`, {
+      const requestData = {
         title: editedTicket.title,
         description: editedTicket.description,
         status: editedTicket.status,
         priority: editedTicket.priority
+      };
+      
+      console.log('📤 ОБНОВЛЕНИЕ ТИКЕТА - Отправка запроса', {
+        url: `/api/tickets/${id}`,
+        method: 'PUT',
+        data: requestData
       });
       
-      console.log('Тикет обновлен:', response.data);
+      const response = await axios.put(`/api/tickets/${id}`, requestData);
       
-      setTicket(editedTicket);
+      console.log('✅ ОБНОВЛЕНИЕ ТИКЕТА - Ответ сервера получен', {
+        status: response.status,
+        data: response.data
+      });
+      
+      // Обновляем локальное состояние с данными от сервера
+      const updatedTicket = {
+        ...ticket,
+        title: editedTicket.title,
+        description: editedTicket.description,
+        status: editedTicket.status,
+        priority: editedTicket.priority,
+        updatedAt: new Date().toISOString()
+      };
+      
+      setTicket(updatedTicket);
+      setEditedTicket(updatedTicket);
       setEditDialogOpen(false);
       setError(null);
       
+      console.log('🎉 ОБНОВЛЕНИЕ ТИКЕТА - Локальное состояние обновлено', {
+        oldStatus: ticket.status,
+        newStatus: updatedTicket.status,
+        updatedTicket: updatedTicket
+      });
+      
     } catch (err) {
-      console.error('Ошибка обновления тикета:', err);
+      console.error('❌ ОБНОВЛЕНИЕ ТИКЕТА - Ошибка:', {
+        error: err.message,
+        response: err.response?.data,
+        status: err.response?.status,
+        ticketId: id,
+        requestedStatus: editedTicket.status
+      });
       
       let errorMessage = 'Ошибка обновления тикета';
       if (err.response?.status === 403) {
         errorMessage = 'Нет доступа для обновления тикета';
       } else if (err.response?.status === 404) {
         errorMessage = 'Тикет не найден';
+      } else if (err.response?.status === 400) {
+        errorMessage = `Ошибка валидации: ${err.response?.data?.message || 'Неверные данные'}`;
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      }
+      
+      setError(errorMessage);
+      
+      // Показываем детальную ошибку в консоли
+      if (err.response?.data) {
+        console.error('📋 ОБНОВЛЕНИЕ ТИКЕТА - Детали ошибки сервера:', err.response.data);
+      }
+    }
+  };
+
+  // Функции для назначения тикетов
+  const fetchAvailableAssignees = async () => {
+    try {
+      console.log('👥 Загрузка списка доступных исполнителей...');
+      
+      const response = await axios.get('/api/tickets/assignees/available');
+      
+      console.log('Список исполнителей получен:', response.data);
+      
+      setAvailableAssignees(response.data.assignees || []);
+      
+    } catch (err) {
+      console.error('Ошибка загрузки списка исполнителей:', err);
+      
+      let errorMessage = 'Ошибка загрузки списка исполнителей';
+      if (err.response?.status === 403) {
+        errorMessage = 'Нет доступа для просмотра списка исполнителей';
       }
       
       setError(errorMessage);
     }
   };
 
+  const handleOpenAssignDialog = async () => {
+    setSelectedAssignee(ticket.assignedTo?.id || '');
+    await fetchAvailableAssignees();
+    setAssignDialogOpen(true);
+  };
+
+  const handleAssignTicket = async () => {
+    try {
+      setAssigningTicket(true);
+      setError(null);
+      
+      console.log('🎯 Назначение тикета:', {
+        ticketId: id,
+        assignedToId: selectedAssignee || null
+      });
+      
+      const response = await axios.put(`/api/tickets/${id}/assign`, {
+        assignedToId: selectedAssignee || null
+      });
+      
+      console.log('Тикет успешно назначен:', response.data);
+      
+      // Обновляем информацию о тикете
+      const updatedTicket = response.data.ticket;
+      setTicket({
+        ...ticket,
+        assignedTo: updatedTicket.assignedTo ? {
+          id: updatedTicket.assignedTo.id,
+          name: `${updatedTicket.assignedTo.firstName} ${updatedTicket.assignedTo.lastName}`,
+          email: updatedTicket.assignedTo.email
+        } : null
+      });
+      
+      setAssignDialogOpen(false);
+      
+    } catch (err) {
+      console.error('Ошибка назначения тикета:', err);
+      
+      let errorMessage = 'Ошибка назначения тикета';
+      if (err.response?.status === 403) {
+        errorMessage = 'Нет доступа для назначения тикета';
+      } else if (err.response?.status === 404) {
+        errorMessage = 'Тикет или пользователь не найден';
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      }
+      
+      setError(errorMessage);
+    } finally {
+      setAssigningTicket(false);
+    }
+  };
+
+  const canAssignTicket = () => {
+    return user && (user.role === 'admin' || user.role === 'agent');
+  };
+
   const getStatusColor = (status) => {
     switch (status) {
-      case 'open': return 'error';
+      case 'new': return 'info';
+      case 'assigned': return 'info';
       case 'in_progress': return 'warning';
+      case 'on_hold': return 'warning';
       case 'resolved': return 'success';
       case 'closed': return 'default';
       default: return 'default';
@@ -423,10 +686,12 @@ const TicketDetails = () => {
 
   const getStatusText = (status) => {
     switch (status) {
-      case 'open': return 'Открыт';
+      case 'new': return 'Новая';
+      case 'assigned': return 'Назначена';
       case 'in_progress': return 'В работе';
-      case 'resolved': return 'Решен';
-      case 'closed': return 'Закрыт';
+      case 'on_hold': return 'Приостановлена';
+      case 'resolved': return 'Решена';
+      case 'closed': return 'Закрыта';
       default: return status;
     }
   };
@@ -491,13 +756,28 @@ const TicketDetails = () => {
         <Typography variant="h4" component="h1" flexGrow={1}>
           Тикет #{ticket.ticketNumber || ticket.id.slice(0, 8)}
         </Typography>
-        <Button
-          variant="outlined"
-          startIcon={<Edit />}
-          onClick={() => setEditDialogOpen(true)}
-        >
-          Редактировать
-        </Button>
+        <Box display="flex" gap={1}>
+          {/* Кнопка редактирования доступна только агентам и администраторам */}
+          {user && (user.role === 'admin' || user.role === 'agent') && (
+            <Button
+              variant="outlined"
+              startIcon={<Edit />}
+              onClick={() => setEditDialogOpen(true)}
+            >
+              Редактировать
+            </Button>
+          )}
+          {canAssignTicket() && (
+            <Button
+              variant="outlined"
+              startIcon={<Person />}
+              onClick={handleOpenAssignDialog}
+              color="primary"
+            >
+              Назначить
+            </Button>
+          )}
+        </Box>
       </Box>
 
       <Grid container spacing={3}>
@@ -625,9 +905,21 @@ const TicketDetails = () => {
                       }}
                     >
                       <ListItemAvatar>
-                        <Avatar sx={{ bgcolor: 'primary.main' }}>
-                          {getFileIcon(attachment.mimeType)}
-                        </Avatar>
+                        {isImageFile(attachment.mimeType) ? (
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <ImageThumbnail
+                              src={`/api/tickets/${id}/attachments/${attachment.id}`}
+                              alt={attachment.originalName}
+                              onClick={() => handleImagePreview(attachment)}
+                              size={50}
+                              loading={false}
+                            />
+                          </Box>
+                        ) : (
+                          <Avatar sx={{ bgcolor: 'primary.main' }}>
+                            {getFileIcon(attachment.mimeType)}
+                          </Avatar>
+                        )}
                       </ListItemAvatar>
                       <ListItemText
                         primary={attachment.originalName}
@@ -636,25 +928,43 @@ const TicketDetails = () => {
                             <Typography variant="body2" color="text.secondary">
                               {formatFileSize(attachment.size)} • {new Date(attachment.createdAt).toLocaleString()}
                             </Typography>
+                            {isImageFile(attachment.mimeType) && (
+                              <Typography variant="caption" color="primary">
+                                Нажмите на изображение для просмотра
+                              </Typography>
+                            )}
                           </>
                         }
                       />
                       <Box display="flex" gap={1}>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleFileDownload(attachment.id, attachment.originalName)}
-                          title="Скачать файл"
-                        >
-                          <Download />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleFileDelete(attachment.id, attachment.originalName)}
-                          title="Удалить файл"
-                          color="error"
-                        >
-                          <Delete />
-                        </IconButton>
+                        {isImageFile(attachment.mimeType) && (
+                          <Tooltip title="Просмотр изображения">
+                            <IconButton
+                              size="small"
+                              onClick={() => handleImagePreview(attachment)}
+                              color="primary"
+                            >
+                              <Visibility />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                        <Tooltip title="Скачать файл">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleFileDownload(attachment.id, attachment.originalName)}
+                          >
+                            <Download />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Удалить файл">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleFileDelete(attachment.id, attachment.originalName)}
+                            color="error"
+                          >
+                            <Delete />
+                          </IconButton>
+                        </Tooltip>
                       </Box>
                     </ListItem>
                   ))}
@@ -793,10 +1103,12 @@ const TicketDetails = () => {
               value={editedTicket.status || ''}
               onChange={(e) => setEditedTicket({ ...editedTicket, status: e.target.value })}
             >
-              <MenuItem value="open">Открыт</MenuItem>
+              <MenuItem value="new">Новая</MenuItem>
+              <MenuItem value="assigned">Назначена</MenuItem>
               <MenuItem value="in_progress">В работе</MenuItem>
-              <MenuItem value="resolved">Решен</MenuItem>
-              <MenuItem value="closed">Закрыт</MenuItem>
+              <MenuItem value="on_hold">Приостановлена</MenuItem>
+              <MenuItem value="resolved">Решена</MenuItem>
+              <MenuItem value="closed">Закрыта</MenuItem>
             </Select>
           </FormControl>
           
@@ -819,6 +1131,110 @@ const TicketDetails = () => {
           </Button>
           <Button onClick={handleUpdateTicket} variant="contained">
             Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={closeConfirmDialog}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        itemName={confirmDialog.itemName}
+        itemType={confirmDialog.itemType}
+        confirmText="Удалить"
+        cancelText="Отмена"
+        severity="error"
+        confirmColor="error"
+      />
+
+      {/* Image Preview Dialog */}
+      <ImagePreview
+        open={imagePreview.open}
+        onClose={closeImagePreview}
+        imageUrl={imagePreview.imageUrl}
+        imageName={imagePreview.imageName}
+        loading={imagePreview.loading}
+        onDownload={() => handleImageDownload(imagePreview.attachmentId, imagePreview.imageName)}
+      />
+
+      {/* Assign Dialog */}
+      <Dialog open={assignDialogOpen} onClose={() => setAssignDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Назначить тикет</DialogTitle>
+        <DialogContent>
+          <FormControl fullWidth sx={{ mt: 1 }}>
+            <InputLabel>Исполнитель</InputLabel>
+            <Select
+              value={selectedAssignee}
+              onChange={(e) => setSelectedAssignee(e.target.value)}
+              disabled={assigningTicket}
+            >
+              <MenuItem value="">
+                <em>Не назначен</em>
+              </MenuItem>
+              {availableAssignees.map((assignee) => (
+                <MenuItem key={assignee.id} value={assignee.id}>
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <Avatar sx={{ width: 24, height: 24, fontSize: 12 }}>
+                      {assignee.name.charAt(0)}
+                    </Avatar>
+                    <Box>
+                      <Typography variant="body2">
+                        {assignee.name}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {assignee.role === 'admin' ? 'Администратор' : 'Агент'} • {assignee.email}
+                      </Typography>
+                    </Box>
+                  </Box>
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          
+          {ticket.assignedTo && (
+            <Box
+              mt={2}
+              p={2}
+              sx={{
+                bgcolor: (theme) => theme.palette.mode === 'dark' ? 'grey.800' : 'grey.50',
+                borderRadius: 1
+              }}
+            >
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Текущий исполнитель:
+              </Typography>
+              <Box display="flex" alignItems="center" gap={1}>
+                <Avatar sx={{ width: 32, height: 32 }}>
+                  {ticket.assignedTo.name.charAt(0)}
+                </Avatar>
+                <Box>
+                  <Typography variant="body2">
+                    {ticket.assignedTo.name}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {ticket.assignedTo.email}
+                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setAssignDialogOpen(false)}
+            disabled={assigningTicket}
+          >
+            Отмена
+          </Button>
+          <Button
+            onClick={handleAssignTicket}
+            variant="contained"
+            disabled={assigningTicket}
+          >
+            {assigningTicket ? 'Назначение...' : 'Назначить'}
           </Button>
         </DialogActions>
       </Dialog>

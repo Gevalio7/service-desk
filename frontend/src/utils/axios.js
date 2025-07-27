@@ -2,14 +2,17 @@ import axios from 'axios';
 
 // Create axios instance with base configuration
 const axiosInstance = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://127.0.0.1:3007',
-  timeout: 60000, // 60 seconds timeout
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:3007',
+  timeout: 30000, // 30 seconds timeout
   headers: {
     'Content-Type': 'application/json',
   },
   maxContentLength: 50 * 1024 * 1024, // 50MB
   maxBodyLength: 50 * 1024 * 1024, // 50MB
 });
+
+// Добавляем логирование для отладки
+console.log('Axios базовый URL:', axiosInstance.defaults.baseURL);
 
 // Request interceptor to add auth token
 axiosInstance.interceptors.request.use(

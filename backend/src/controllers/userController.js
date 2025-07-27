@@ -356,3 +356,58 @@ exports.changePassword = async (req, res) => {
     });
   }
 };
+
+/**
+ * Get user activity log
+ * Admin, agent, or self only
+ */
+exports.getUserActivity = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Role-based access control
+    if (req.user.role === 'client' && req.user.id !== id) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    // Get user
+    const user = await User.findByPk(id);
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // For now, return mock activity data
+    // TODO: Implement real activity logging system
+    const mockActivity = [
+      {
+        id: 1,
+        action: 'Вход в систему',
+        timestamp: new Date().toISOString(),
+        details: 'Успешный вход с IP 192.168.1.1'
+      },
+      {
+        id: 2,
+        action: 'Создание тикета',
+        timestamp: new Date(Date.now() - 3600000).toISOString(),
+        details: 'Создан тикет "Проблема с входом"'
+      },
+      {
+        id: 3,
+        action: 'Обновление профиля',
+        timestamp: new Date(Date.now() - 7200000).toISOString(),
+        details: 'Изменен номер телефона'
+      }
+    ];
+    
+    res.status(200).json({
+      activity: mockActivity
+    });
+  } catch (error) {
+    logger.error('Error in getUserActivity controller:', error);
+    res.status(500).json({
+      message: 'Error getting user activity',
+      error: process.env.NODE_ENV === 'production' ? {} : error.message
+    });
+  }
+};

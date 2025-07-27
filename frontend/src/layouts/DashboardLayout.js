@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { styled } from '@mui/material/styles';
 import {
@@ -19,7 +19,9 @@ import {
   MenuItem,
   Badge,
   Tooltip,
-  useMediaQuery
+  useMediaQuery,
+  CircularProgress,
+  Chip
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -38,6 +40,7 @@ import {
 } from '@mui/icons-material';
 
 import { useAuth } from '../contexts/AuthContext';
+import { useNotifications } from '../hooks/useNotifications';
 
 const drawerWidth = 240;
 
@@ -94,6 +97,16 @@ const DashboardLayout = ({ children, darkMode, toggleTheme }) => {
   const [notificationsAnchorEl, setNotificationsAnchorEl] = useState(null);
   const isMobile = useMediaQuery((theme) => theme.breakpoints.down('md'));
   
+  // Хук для работы с уведомлениями
+  const {
+    notifications,
+    unreadCount,
+    loading: notificationsLoading,
+    fetchNotifications,
+    markAsRead,
+    markAllAsRead
+  } = useNotifications();
+  
   // Close drawer on mobile
   React.useEffect(() => {
     if (isMobile) {
@@ -119,12 +132,57 @@ const DashboardLayout = ({ children, darkMode, toggleTheme }) => {
     setAnchorEl(null);
   };
   
-  const handleNotificationsOpen = (event) => {
+  const handleNotificationsOpen = async (event) => {
     setNotificationsAnchorEl(event.currentTarget);
+    // Загружаем последние уведомления при открытии меню
+    try {
+      await fetchNotifications({ limit: 5 });
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+    }
   };
   
   const handleNotificationsClose = () => {
     setNotificationsAnchorEl(null);
+  };
+  
+  const handleNotificationClick = async (notification) => {
+    try {
+      // Отмечаем уведомление как прочитанное
+      if (!notification.isRead) {
+        await markAsRead(notification.id);
+      }
+      
+      // Переходим к связанной заявке, если есть данные
+      if (notification.data?.ticketId) {
+        navigate(`/tickets/${notification.data.ticketId}`);
+      }
+      
+      handleNotificationsClose();
+    } catch (error) {
+      console.error('Error handling notification click:', error);
+    }
+  };
+  
+  const handleMarkAllAsRead = async () => {
+    try {
+      await markAllAsRead();
+    } catch (error) {
+      console.error('Error marking all as read:', error);
+    }
+  };
+
+  // Функция для получения метки типа уведомления
+  const getNotificationTypeLabel = (type) => {
+    const types = {
+      'ticket_created': 'Создана',
+      'ticket_updated': 'Обновлена',
+      'ticket_assigned': 'Назначена',
+      'ticket_closed': 'Закрыта',
+      'comment_added': 'Комментарий',
+      'system': 'Система'
+    };
+    return types[type] || type;
   };
   
   const handleLogout = () => {
@@ -201,7 +259,7 @@ const DashboardLayout = ({ children, darkMode, toggleTheme }) => {
               color="inherit"
               onClick={handleNotificationsOpen}
             >
-              <Badge badgeContent={4} color="error">
+              <Badge badgeContent={unreadCount} color="error">
                 <NotificationsIcon />
               </Badge>
             </IconButton>
@@ -239,19 +297,115 @@ const DashboardLayout = ({ children, darkMode, toggleTheme }) => {
             transformOrigin={{ horizontal: 'right', vertical: 'top' }}
             anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
           >
-            <MenuItem onClick={handleNotificationsClose}>
-              <Typography variant="body2">Новая заявка #12345 создана</Typography>
-            </MenuItem>
-            <MenuItem onClick={handleNotificationsClose}>
-              <Typography variant="body2">Заявка #12340 обновлена</Typography>
-            </MenuItem>
-            <MenuItem onClick={handleNotificationsClose}>
-              <Typography variant="body2">SLA нарушен для заявки #12335</Typography>
-            </MenuItem>
-            <Divider />
-            <MenuItem onClick={handleNotificationsClose}>
-              <Typography variant="body2" color="primary">Показать все уведомления</Typography>
-            </MenuItem>
+            {notificationsLoading ? (
+              <MenuItem>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CircularProgress size={16} />
+                  <Typography variant="body2">Загрузка уведомлений...</Typography>
+                </Box>
+              </MenuItem>
+            ) : notifications.length > 0 ? (
+              <>
+                {notifications.slice(0, 5).map((notification) => (
+                  <MenuItem
+                    key={notification.id}
+                    onClick={() => handleNotificationClick(notification)}
+                    sx={{
+                      backgroundColor: notification.isRead ? 'transparent' : 'rgba(25, 118, 210, 0.08)',
+                      borderLeft: notification.isRead ? 'none' : '4px solid',
+                      borderLeftColor: 'primary.main',
+                      position: 'relative',
+                      '&:hover': {
+                        backgroundColor: notification.isRead ? 'action.hover' : 'rgba(25, 118, 210, 0.12)'
+                      }
+                    }}
+                  >
+                    {/* Индикатор непрочитанного уведомления */}
+                    {!notification.isRead && (
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          top: 8,
+                          right: 8,
+                          width: 8,
+                          height: 8,
+                          borderRadius: '50%',
+                          backgroundColor: 'primary.main',
+                          zIndex: 1
+                        }}
+                      />
+                    )}
+                    
+                    <Box sx={{ width: '100%', pr: notification.isRead ? 0 : 2 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontWeight: notification.isRead ? 'normal' : 'bold',
+                            color: notification.isRead ? 'text.primary' : 'primary.main',
+                            flexGrow: 1,
+                            mr: 1
+                          }}
+                        >
+                          {notification.title}
+                        </Typography>
+                        {notification.type && (
+                          <Chip
+                            label={getNotificationTypeLabel(notification.type)}
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              fontSize: '0.65rem',
+                              height: 18,
+                              '& .MuiChip-label': { px: 0.5 }
+                            }}
+                          />
+                        )}
+                      </Box>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{
+                          display: 'block',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          maxWidth: '100%'
+                        }}
+                      >
+                        {notification.message}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ display: 'block', mt: 0.5 }}
+                      >
+                        {new Date(notification.createdAt).toLocaleString('ru-RU')}
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                ))}
+                <Divider />
+                {unreadCount > 0 && (
+                  <MenuItem onClick={handleMarkAllAsRead}>
+                    <Typography variant="body2" color="primary">
+                      Отметить все как прочитанные
+                    </Typography>
+                  </MenuItem>
+                )}
+                <MenuItem onClick={() => { handleNotificationsClose(); navigate('/notifications'); }}>
+                  <Typography variant="body2" color="primary">
+                    Показать все уведомления
+                  </Typography>
+                </MenuItem>
+              </>
+            ) : (
+              <MenuItem>
+                <Typography variant="body2" color="text.secondary">
+                  Нет уведомлений
+                </Typography>
+              </MenuItem>
+            )}
           </Menu>
           
           {/* User profile */}
