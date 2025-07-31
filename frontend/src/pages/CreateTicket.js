@@ -120,9 +120,9 @@ const CreateTicket = () => {
         
         setSuccess(true);
         
-        // Перенаправление на детали тикета через 2 секунды
+        // Перенаправление на список тикетов через 2 секунды
         setTimeout(() => {
-          navigate(`/tickets/${ticketId}`);
+          navigate('/tickets');
         }, 2000);
         
       } catch (err) {
