@@ -17,8 +17,29 @@ const logger = winston.createLogger({
   ]
 });
 
+// Check if bot token is provided and valid
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+if (!BOT_TOKEN || BOT_TOKEN === 'your-telegram-bot-token-here') {
+  logger.warn('Telegram bot token not provided or using placeholder. Bot will not start.');
+  logger.info('To enable Telegram bot:');
+  logger.info('1. Create a bot via @BotFather on Telegram');
+  logger.info('2. Get the bot token');
+  logger.info('3. Update TELEGRAM_BOT_TOKEN in .env file');
+  logger.info('4. Restart the application');
+  
+  // Export empty functions to prevent crashes
+  module.exports = {
+    bot: null,
+    startBot: async () => {
+      logger.info('Telegram bot is disabled - no valid token provided');
+      return Promise.resolve();
+    }
+  };
+  return;
+}
+
 // Initialize bot
-const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
+const bot = new Telegraf(BOT_TOKEN);
 
 // Import handlers
 const startHandler = require('./handlers/startHandler');
