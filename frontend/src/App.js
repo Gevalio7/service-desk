@@ -5,6 +5,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 
 // Auth context
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { AppearanceProvider } from './contexts/AppearanceContext';
 
 // Layouts
 import DashboardLayout from './layouts/DashboardLayout';
@@ -184,7 +185,8 @@ function App() {
     <ThemeProvider theme={darkMode ? darkTheme : lightTheme}>
       <CssBaseline />
       <AuthProvider>
-        <Router>
+        <AppearanceProvider>
+          <Router>
           <Routes>
             {/* Auth routes */}
             <Route path="/login" element={<AuthLayout><Login /></AuthLayout>} />
@@ -274,7 +276,8 @@ function App() {
             {/* 404 route */}
             <Route path="*" element={<NotFound />} />
           </Routes>
-        </Router>
+          </Router>
+        </AppearanceProvider>
       </AuthProvider>
     </ThemeProvider>
   );

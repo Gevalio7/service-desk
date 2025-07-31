@@ -46,9 +46,11 @@ import {
   Warning
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
+import { useAppearance } from '../contexts/AppearanceContext';
 
 const Settings = () => {
   const { user, hasRole } = useAuth();
+  const { settings: appearanceSettings, updateSetting: updateAppearanceSetting, updateSettings: updateAppearanceSettings } = useAppearance();
   const [activeTab, setActiveTab] = useState(0);
   const [settings, setSettings] = useState({
     notifications: {
@@ -60,12 +62,7 @@ const Settings = () => {
       systemAlerts: true,
       weeklyReports: false
     },
-    appearance: {
-      theme: 'light',
-      language: 'ru',
-      compactMode: false,
-      showAvatars: true
-    },
+    appearance: appearanceSettings,
     privacy: {
       profileVisibility: 'public',
       activityTracking: true,
@@ -120,6 +117,11 @@ const Settings = () => {
   };
 
   const handleSettingChange = (category, setting, value) => {
+    if (category === 'appearance') {
+      // Обновляем настройки внешнего вида через контекст
+      updateAppearanceSetting(setting, value);
+    }
+    
     setSettings(prev => ({
       ...prev,
       [category]: {
@@ -138,6 +140,16 @@ const Settings = () => {
       setLoading(true);
       
       // Сброс к настройкам по умолчанию
+      const defaultAppearanceSettings = {
+        theme: 'light',
+        language: 'ru',
+        compactMode: false,
+        showAvatars: true,
+        ticketRowSize: 'normal'
+      };
+      
+      updateAppearanceSettings(defaultAppearanceSettings);
+      
       setSettings({
         notifications: {
           email: true,
@@ -148,12 +160,7 @@ const Settings = () => {
           systemAlerts: true,
           weeklyReports: false
         },
-        appearance: {
-          theme: 'light',
-          language: 'ru',
-          compactMode: false,
-          showAvatars: true
-        },
+        appearance: defaultAppearanceSettings,
         privacy: {
           profileVisibility: 'public',
           activityTracking: true,
@@ -406,6 +413,24 @@ const Settings = () => {
                 />
                 <Typography variant="body2" color="text.secondary">
                   Отображать аватары пользователей в списках и комментариях
+                </Typography>
+              </Grid>
+              
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Размер строк заявок</InputLabel>
+                  <Select
+                    value={settings.appearance.ticketRowSize}
+                    onChange={(e) => handleSettingChange('appearance', 'ticketRowSize', e.target.value)}
+                    label="Размер строк заявок"
+                  >
+                    <MenuItem value="compact">Компактный</MenuItem>
+                    <MenuItem value="normal">Обычный</MenuItem>
+                    <MenuItem value="large">Крупный</MenuItem>
+                  </Select>
+                </FormControl>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Выберите высоту строк в списке заявок
                 </Typography>
               </Grid>
             </Grid>

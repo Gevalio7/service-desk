@@ -41,11 +41,13 @@ import { format } from 'date-fns';
 import axios from '../utils/axios';
 
 import { useAuth } from '../contexts/AuthContext';
+import { useAppearance } from '../contexts/AppearanceContext';
 
 const TicketList = () => {
   const theme = useTheme();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { settings: appearanceSettings } = useAppearance();
   
   // State
   const [tickets, setTickets] = useState([]);
@@ -422,22 +424,536 @@ const TicketList = () => {
   };
 
   // Check if description should be truncated
-  const shouldTruncateDescription = (description) => {
-    return description && description.length > 100;
+  const shouldTruncateDescription = (description, maxLength = 100) => {
+    return description && description.length > maxLength;
   };
 
   // Get truncated description
-  const getTruncatedDescription = (description, ticketId) => {
+  const getTruncatedDescription = (description, ticketId, maxLength = 100) => {
     if (!description) return '';
     
     const isExpanded = expandedDescriptions.has(ticketId);
-    const shouldTruncate = shouldTruncateDescription(description);
+    const shouldTruncate = shouldTruncateDescription(description, maxLength);
     
     if (!shouldTruncate || isExpanded) {
       return description;
     }
     
-    return description.substring(0, 100) + '...';
+    return description.substring(0, maxLength) + '...';
+  };
+
+  // Рендер компактного представления тикета
+  const renderCompactTicket = (ticket) => (
+    <Card
+      key={ticket.id}
+      sx={{
+        mb: 0.5,
+        cursor: 'pointer',
+        '&:hover': { boxShadow: 2 }
+      }}
+      onClick={() => navigate(`/tickets/${ticket.id}`)}
+    >
+      <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {/* Левая часть - основная информация в одну строку */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, minWidth: 0 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                fontWeight: 600,
+                fontSize: '0.85rem',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                maxWidth: '300px'
+              }}
+            >
+              {ticket.title}
+            </Typography>
+            
+            <Chip
+              label={translateStatus(ticket.status)}
+              size="small"
+              sx={{
+                bgcolor: getStatusColor(ticket.status),
+                color: 'white',
+                height: '16px',
+                fontSize: '0.6rem',
+                '& .MuiChip-label': { px: 0.5 }
+              }}
+            />
+            
+            <Chip
+              label={translatePriority(ticket.priority)}
+              size="small"
+              sx={{
+                bgcolor: getPriorityColor(ticket.priority),
+                color: 'white',
+                height: '16px',
+                fontSize: '0.6rem',
+                '& .MuiChip-label': { px: 0.5 }
+              }}
+            />
+          </Box>
+          
+          {/* Правая часть - метаданные */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+            <Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'text.secondary' }}>
+              {format(new Date(ticket.createdAt), 'dd.MM HH:mm')}
+            </Typography>
+            <Typography variant="caption" sx={{ fontSize: '0.6rem', fontFamily: 'monospace', bgcolor: 'grey.100', px: 0.5, borderRadius: 0.5 }}>
+              {ticket.id.substring(0, 6)}
+            </Typography>
+          </Box>
+        </Box>
+      </CardContent>
+    </Card>
+  );
+
+  // Рендер обычного представления тикета (текущий)
+  const renderNormalTicket = (ticket) => (
+    <Card
+      key={ticket.id}
+      sx={{
+        mb: 2,
+        cursor: 'pointer',
+        '&:hover': { boxShadow: 6 }
+      }}
+      onClick={() => navigate(`/tickets/${ticket.id}`)}
+    >
+      <CardContent sx={{ pb: 2 }}>
+        <Grid container spacing={2} sx={{
+          alignItems: 'flex-start',
+          justifyContent: 'space-between'
+        }}>
+          <Grid item xs={12} md={8}>
+            <Typography
+              variant="h6"
+              component="div"
+              gutterBottom
+              sx={{
+                wordWrap: 'break-word',
+                overflowWrap: 'break-word',
+                hyphens: 'auto',
+                lineHeight: 1.3,
+                mb: 1.5
+              }}
+            >
+              {ticket.title}
+            </Typography>
+            
+            {ticket.description && (
+              <Box sx={{ mb: 2 }}>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{
+                    wordWrap: 'break-word',
+                    overflowWrap: 'break-word',
+                    whiteSpace: 'pre-wrap',
+                    lineHeight: 1.4
+                  }}
+                >
+                  {getTruncatedDescription(ticket.description, ticket.id, 100)}
+                </Typography>
+                
+                {shouldTruncateDescription(ticket.description, 100) && (
+                  <Button
+                    size="small"
+                    onClick={(e) => toggleDescriptionExpansion(ticket.id, e)}
+                    startIcon={
+                      expandedDescriptions.has(ticket.id) ?
+                        <ExpandLessIcon /> :
+                        <ExpandMoreIcon />
+                    }
+                    sx={{
+                      mt: 0.5,
+                      p: 0.5,
+                      minWidth: 'auto',
+                      fontSize: '0.75rem'
+                    }}
+                  >
+                    {expandedDescriptions.has(ticket.id) ? 'Свернуть' : 'Развернуть'}
+                  </Button>
+                )}
+              </Box>
+            )}
+            
+            <Box sx={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 0.5,
+              alignItems: 'center'
+            }}>
+              <Chip
+                label={translateType(ticket.type)}
+                size="small"
+                sx={{
+                  bgcolor: getTypeColor(ticket.type),
+                  color: 'white',
+                  fontWeight: 500
+                }}
+              />
+              
+              <Chip
+                label={translateStatus(ticket.status)}
+                size="small"
+                sx={{
+                  bgcolor: getStatusColor(ticket.status),
+                  color: 'white',
+                  fontWeight: 500
+                }}
+              />
+              
+              <Chip
+                label={translatePriority(ticket.priority)}
+                size="small"
+                sx={{
+                  bgcolor: getPriorityColor(ticket.priority),
+                  color: 'white',
+                  fontWeight: 500
+                }}
+              />
+              
+              <Chip
+                label={translateCategory(ticket.category)}
+                size="small"
+                variant="outlined"
+              />
+              
+              {ticket.tags && ticket.tags.slice(0, 3).map((tag) => (
+                <Chip
+                  key={tag}
+                  label={tag}
+                  size="small"
+                  variant="outlined"
+                  sx={{
+                    maxWidth: '120px',
+                    '& .MuiChip-label': {
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }
+                  }}
+                />
+              ))}
+              
+              {ticket.tags && ticket.tags.length > 3 && (
+                <Chip
+                  label={`+${ticket.tags.length - 3}`}
+                  size="small"
+                  variant="outlined"
+                  sx={{ opacity: 0.7 }}
+                />
+              )}
+            </Box>
+          </Grid>
+          
+          <Grid item xs={12} md={4} sx={{
+            display: 'flex',
+            justifyContent: 'flex-end'
+          }}>
+            <Box sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
+              gap: 0.5,
+              minHeight: '100px',
+              justifyContent: 'flex-start',
+              width: 'auto'
+            }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{
+                  fontFamily: 'monospace',
+                  bgcolor: 'grey.100',
+                  px: 0.5,
+                  py: 0.25,
+                  borderRadius: 0.5,
+                  fontSize: '0.7rem'
+                }}
+              >
+                ID: {ticket.id.substring(0, 8)}
+              </Typography>
+              
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{
+                  whiteSpace: 'nowrap',
+                  fontSize: '0.7rem'
+                }}
+              >
+                Создана: {format(new Date(ticket.createdAt), 'dd.MM.yyyy HH:mm')}
+              </Typography>
+              
+              {ticket.createdBy && (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{
+                    maxWidth: '200px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    fontSize: '0.7rem'
+                  }}
+                >
+                  Автор: {ticket.createdBy.firstName} {ticket.createdBy.lastName}
+                </Typography>
+              )}
+              
+              {ticket.assignedTo && (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{
+                    maxWidth: '200px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    fontSize: '0.7rem'
+                  }}
+                >
+                  Назначена: {ticket.assignedTo.firstName} {ticket.assignedTo.lastName}
+                </Typography>
+              )}
+              
+              {ticket.slaDeadline && (
+                <Typography
+                  variant="caption"
+                  color={
+                    new Date() > new Date(ticket.slaDeadline)
+                      ? 'error.main'
+                      : 'text.secondary'
+                  }
+                  sx={{
+                    whiteSpace: 'nowrap',
+                    fontWeight: new Date() > new Date(ticket.slaDeadline) ? 600 : 400,
+                    fontSize: '0.7rem'
+                  }}
+                >
+                  SLA: {format(new Date(ticket.slaDeadline), 'dd.MM.yyyy HH:mm')}
+                </Typography>
+              )}
+            </Box>
+          </Grid>
+        </Grid>
+      </CardContent>
+    </Card>
+  );
+
+  // Рендер крупного представления тикета
+  const renderLargeTicket = (ticket) => (
+    <Card
+      key={ticket.id}
+      sx={{
+        mb: 3,
+        cursor: 'pointer',
+        '&:hover': { boxShadow: 8 }
+      }}
+      onClick={() => navigate(`/tickets/${ticket.id}`)}
+    >
+      <CardContent sx={{ p: 3 }}>
+        {/* Заголовок и ID */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+          <Typography
+            variant="h5"
+            component="div"
+            sx={{
+              wordWrap: 'break-word',
+              overflowWrap: 'break-word',
+              hyphens: 'auto',
+              lineHeight: 1.4,
+              flex: 1,
+              mr: 2
+            }}
+          >
+            {ticket.title}
+          </Typography>
+          <Typography
+            variant="caption"
+            sx={{
+              fontFamily: 'monospace',
+              bgcolor: 'primary.main',
+              color: 'white',
+              px: 1,
+              py: 0.5,
+              borderRadius: 1,
+              fontSize: '0.8rem',
+              fontWeight: 600
+            }}
+          >
+            #{ticket.id.substring(0, 8)}
+          </Typography>
+        </Box>
+
+        {/* Описание */}
+        {ticket.description && (
+          <Box sx={{ mb: 3 }}>
+            <Typography
+              variant="body1"
+              color="text.secondary"
+              sx={{
+                wordWrap: 'break-word',
+                overflowWrap: 'break-word',
+                whiteSpace: 'pre-wrap',
+                lineHeight: 1.6,
+                fontSize: '1rem'
+              }}
+            >
+              {getTruncatedDescription(ticket.description, ticket.id, 200)}
+            </Typography>
+            
+            {shouldTruncateDescription(ticket.description, 200) && (
+              <Button
+                size="medium"
+                onClick={(e) => toggleDescriptionExpansion(ticket.id, e)}
+                startIcon={
+                  expandedDescriptions.has(ticket.id) ?
+                    <ExpandLessIcon /> :
+                    <ExpandMoreIcon />
+                }
+                sx={{ mt: 1 }}
+              >
+                {expandedDescriptions.has(ticket.id) ? 'Свернуть' : 'Показать полностью'}
+              </Button>
+            )}
+          </Box>
+        )}
+
+        {/* Статусы и теги */}
+        <Box sx={{ mb: 3 }}>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
+                Статус и приоритет
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Chip
+                  label={translateStatus(ticket.status)}
+                  sx={{
+                    bgcolor: getStatusColor(ticket.status),
+                    color: 'white',
+                    fontWeight: 600,
+                    fontSize: '0.8rem'
+                  }}
+                />
+                <Chip
+                  label={translatePriority(ticket.priority)}
+                  sx={{
+                    bgcolor: getPriorityColor(ticket.priority),
+                    color: 'white',
+                    fontWeight: 600,
+                    fontSize: '0.8rem'
+                  }}
+                />
+              </Box>
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
+                Тип и категория
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Chip
+                  label={translateType(ticket.type)}
+                  sx={{
+                    bgcolor: getTypeColor(ticket.type),
+                    color: 'white',
+                    fontWeight: 600,
+                    fontSize: '0.8rem'
+                  }}
+                />
+                <Chip
+                  label={translateCategory(ticket.category)}
+                  variant="outlined"
+                  sx={{ fontSize: '0.8rem' }}
+                />
+              </Box>
+            </Grid>
+          </Grid>
+        </Box>
+
+        {/* Теги */}
+        {ticket.tags && ticket.tags.length > 0 && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
+              Теги
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+              {ticket.tags.map((tag) => (
+                <Chip
+                  key={tag}
+                  label={tag}
+                  variant="outlined"
+                  size="small"
+                />
+              ))}
+            </Box>
+          </Box>
+        )}
+
+        {/* Метаданные */}
+        <Box sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          pt: 2,
+          borderTop: 1,
+          borderColor: 'divider'
+        }}>
+          <Box>
+            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.9rem' }}>
+              Создана: {format(new Date(ticket.createdAt), 'dd.MM.yyyy HH:mm')}
+            </Typography>
+            {ticket.createdBy && (
+              <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.9rem' }}>
+                Автор: {ticket.createdBy.firstName} {ticket.createdBy.lastName}
+              </Typography>
+            )}
+          </Box>
+          
+          <Box sx={{ textAlign: 'right' }}>
+            {ticket.assignedTo && (
+              <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.9rem' }}>
+                Назначена: {ticket.assignedTo.firstName} {ticket.assignedTo.lastName}
+              </Typography>
+            )}
+            {ticket.slaDeadline && (
+              <Typography
+                variant="body2"
+                color={
+                  new Date() > new Date(ticket.slaDeadline)
+                    ? 'error.main'
+                    : 'text.secondary'
+                }
+                sx={{
+                  fontWeight: new Date() > new Date(ticket.slaDeadline) ? 600 : 400,
+                  fontSize: '0.9rem'
+                }}
+              >
+                SLA: {format(new Date(ticket.slaDeadline), 'dd.MM.yyyy HH:mm')}
+              </Typography>
+            )}
+          </Box>
+        </Box>
+      </CardContent>
+    </Card>
+  );
+
+  // Выбор функции рендера в зависимости от настройки
+  const renderTicket = (ticket) => {
+    const { ticketRowSize } = appearanceSettings;
+    
+    switch (ticketRowSize) {
+      case 'compact':
+        return renderCompactTicket(ticket);
+      case 'large':
+        return renderLargeTicket(ticket);
+      default:
+        return renderNormalTicket(ticket);
+    }
   };
   
   return (
@@ -719,236 +1235,7 @@ const TicketList = () => {
           {/* Tickets list */}
           {tickets.length > 0 ? (
             <>
-              {tickets.map((ticket) => (
-                <Card 
-                  key={ticket.id} 
-                  sx={{ 
-                    mb: 2, 
-                    cursor: 'pointer',
-                    '&:hover': {
-                      boxShadow: 6
-                    }
-                  }}
-                  onClick={() => navigate(`/tickets/${ticket.id}`)}
-                >
-                  <CardContent sx={{ pb: 2 }}>
-                    <Grid container spacing={2} sx={{
-                      alignItems: 'flex-start',
-                      justifyContent: 'space-between'
-                    }}>
-                      <Grid item xs={12} md={8}>
-                        {/* Title with proper word wrapping */}
-                        <Typography
-                          variant="h6"
-                          component="div"
-                          gutterBottom
-                          sx={{
-                            wordWrap: 'break-word',
-                            overflowWrap: 'break-word',
-                            hyphens: 'auto',
-                            lineHeight: 1.3,
-                            mb: 1.5
-                          }}
-                        >
-                          {ticket.title}
-                        </Typography>
-                        
-                        {/* Description with expand/collapse functionality */}
-                        {ticket.description && (
-                          <Box sx={{ mb: 2 }}>
-                            <Typography
-                              variant="body2"
-                              color="text.secondary"
-                              sx={{
-                                wordWrap: 'break-word',
-                                overflowWrap: 'break-word',
-                                whiteSpace: 'pre-wrap',
-                                lineHeight: 1.4
-                              }}
-                            >
-                              {getTruncatedDescription(ticket.description, ticket.id)}
-                            </Typography>
-                            
-                            {shouldTruncateDescription(ticket.description) && (
-                              <Button
-                                size="small"
-                                onClick={(e) => toggleDescriptionExpansion(ticket.id, e)}
-                                startIcon={
-                                  expandedDescriptions.has(ticket.id) ?
-                                    <ExpandLessIcon /> :
-                                    <ExpandMoreIcon />
-                                }
-                                sx={{
-                                  mt: 0.5,
-                                  p: 0.5,
-                                  minWidth: 'auto',
-                                  fontSize: '0.75rem'
-                                }}
-                              >
-                                {expandedDescriptions.has(ticket.id) ? 'Свернуть' : 'Развернуть'}
-                              </Button>
-                            )}
-                          </Box>
-                        )}
-                        
-                        {/* Tags and status chips with proper wrapping */}
-                        <Box sx={{
-                          display: 'flex',
-                          flexWrap: 'wrap',
-                          gap: 0.5,
-                          alignItems: 'center'
-                        }}>
-                          <Chip
-                            label={translateType(ticket.type)}
-                            size="small"
-                            sx={{
-                              bgcolor: getTypeColor(ticket.type),
-                              color: 'white',
-                              fontWeight: 500
-                            }}
-                          />
-                          
-                          <Chip
-                            label={translateStatus(ticket.status)}
-                            size="small"
-                            sx={{
-                              bgcolor: getStatusColor(ticket.status),
-                              color: 'white',
-                              fontWeight: 500
-                            }}
-                          />
-                          
-                          <Chip
-                            label={translatePriority(ticket.priority)}
-                            size="small"
-                            sx={{
-                              bgcolor: getPriorityColor(ticket.priority),
-                              color: 'white',
-                              fontWeight: 500
-                            }}
-                          />
-                          
-                          <Chip
-                            label={translateCategory(ticket.category)}
-                            size="small"
-                            variant="outlined"
-                          />
-                          
-                          {ticket.tags && ticket.tags.slice(0, 3).map((tag) => (
-                            <Chip
-                              key={tag}
-                              label={tag}
-                              size="small"
-                              variant="outlined"
-                              sx={{
-                                maxWidth: '120px',
-                                '& .MuiChip-label': {
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis'
-                                }
-                              }}
-                            />
-                          ))}
-                          
-                          {ticket.tags && ticket.tags.length > 3 && (
-                            <Chip
-                              label={`+${ticket.tags.length - 3}`}
-                              size="small"
-                              variant="outlined"
-                              sx={{ opacity: 0.7 }}
-                            />
-                          )}
-                        </Box>
-                      </Grid>
-                      
-                      <Grid item xs={12} md={4} sx={{
-                        display: 'flex',
-                        justifyContent: 'flex-end'
-                      }}>
-                        <Box sx={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'flex-end',
-                          gap: 0.5,
-                          minHeight: '100px',
-                          justifyContent: 'flex-start',
-                          width: 'auto'
-                        }}>
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{
-                              fontFamily: 'monospace',
-                              bgcolor: 'grey.100',
-                              px: 0.5,
-                              py: 0.25,
-                              borderRadius: 0.5,
-                              fontSize: '0.7rem'
-                            }}
-                          >
-                            ID: {ticket.id.substring(0, 8)}
-                          </Typography>
-                          
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{ whiteSpace: 'nowrap' }}
-                          >
-                            Создана: {format(new Date(ticket.createdAt), 'dd.MM.yyyy HH:mm')}
-                          </Typography>
-                          
-                          {ticket.createdBy && (
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                              sx={{
-                                maxWidth: '200px',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap'
-                              }}
-                            >
-                              Автор: {ticket.createdBy.firstName} {ticket.createdBy.lastName}
-                            </Typography>
-                          )}
-                          
-                          {ticket.assignedTo && (
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                              sx={{
-                                maxWidth: '200px',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap'
-                              }}
-                            >
-                              Назначена: {ticket.assignedTo.firstName} {ticket.assignedTo.lastName}
-                            </Typography>
-                          )}
-                          
-                          {ticket.slaDeadline && (
-                            <Typography
-                              variant="caption"
-                              color={
-                                new Date() > new Date(ticket.slaDeadline)
-                                  ? 'error.main'
-                                  : 'text.secondary'
-                              }
-                              sx={{
-                                whiteSpace: 'nowrap',
-                                fontWeight: new Date() > new Date(ticket.slaDeadline) ? 600 : 400
-                              }}
-                            >
-                              SLA: {format(new Date(ticket.slaDeadline), 'dd.MM.yyyy HH:mm')}
-                            </Typography>
-                          )}
-                        </Box>
-                      </Grid>
-                    </Grid>
-                  </CardContent>
-                </Card>
-              ))}
+              {tickets.map((ticket) => renderTicket(ticket))}
               
               {/* Pagination */}
               <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
