@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFormik } from 'formik';
 import * as yup from 'yup';
@@ -16,17 +16,16 @@ import {
   Grid,
   Alert,
   IconButton,
-  Chip,
-  Paper
+  Chip
 } from '@mui/material';
 import {
   ArrowBack,
-  Add,
-  AttachFile,
-  Delete
+  Add
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import axios from '../utils/axios';
+import FileDropZone from '../components/FileDropZone';
+import ImagePreview from '../components/ImagePreview';
 
 const validationSchema = yup.object({
   title: yup
@@ -59,7 +58,15 @@ const CreateTicket = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState(null);
   const [attachments, setAttachments] = useState([]);
+  const [imagePreview, setImagePreview] = useState({
+    open: false,
+    imageUrl: '',
+    imageName: '',
+    loading: false
+  });
+  const descriptionRef = useRef(null);
 
   const formik = useFormik({
     initialValues: {
@@ -135,21 +142,153 @@ const CreateTicket = () => {
     },
   });
 
-  const handleFileUpload = (event) => {
-    const files = Array.from(event.target.files);
-    const newAttachments = files.map(file => ({
-      id: Date.now() + Math.random(),
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      file: file
-    }));
-    
-    setAttachments([...attachments, ...newAttachments]);
-  };
+  // Константы для ограничений файлов
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 МБ
+  const MAX_FILES = 10;
+
+  // Обработчики для работы с файлами
+  const handleFilesChange = useCallback((newFiles) => {
+    setAttachments(newFiles);
+  }, []);
+
+  const handleImagePreview = useCallback((file) => {
+    if (file.preview) {
+      setImagePreview({
+        open: true,
+        imageUrl: file.preview,
+        imageName: file.name,
+        loading: false
+      });
+    }
+  }, []);
+
+  const closeImagePreview = useCallback(() => {
+    setImagePreview({
+      open: false,
+      imageUrl: '',
+      imageName: '',
+      loading: false
+    });
+  }, []);
+
+  // Функция для обработки вставки из буфера обмена
+  const handlePaste = useCallback((event) => {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+
+    const files = [];
+    const textItems = [];
+    let hasFiles = false;
+    let hasText = false;
+
+    // Проверяем, что есть в буфере обмена
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === 'file') {
+        hasFiles = true;
+        const file = item.getAsFile();
+        if (file) {
+          files.push(file);
+        }
+      } else if (item.kind === 'string' && item.type === 'text/plain') {
+        hasText = true;
+        textItems.push(item);
+      }
+    }
+
+    // Если есть файлы, обрабатываем их и предотвращаем стандартное поведение
+    if (hasFiles && files.length > 0) {
+      event.preventDefault();
+      event.stopPropagation();
+
+      // Проверяем ограничения
+      if (attachments.length + files.length > MAX_FILES) {
+        setError(`Максимальное количество файлов: ${MAX_FILES}. Попытка добавить: ${attachments.length + files.length}`);
+        return;
+      }
+
+      const newAttachments = files.map(file => {
+        // Проверяем размер файла
+        if (file.size > MAX_FILE_SIZE) {
+          setError(`Файл "${file.name}" превышает максимальный размер ${formatFileSize(MAX_FILE_SIZE)}`);
+          return null;
+        }
+
+        return {
+          id: Date.now() + Math.random(),
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          file: file,
+          preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : null
+        };
+      }).filter(Boolean);
+
+      if (newAttachments.length > 0) {
+        setAttachments([...attachments, ...newAttachments]);
+        // Показываем уведомление о добавлении файлов
+        const fileNames = newAttachments.map(f => f.name).join(', ');
+        console.log(`Файлы добавлены из буфера обмена: ${fileNames}`);
+        
+        // Показываем пользователю уведомление
+        setError(null); // Очищаем предыдущие ошибки
+        setSuccessMessage(`Успешно добавлено ${newAttachments.length} файл(ов) из буфера обмена`);
+        
+        // Автоматически скрываем уведомление через 3 секунды
+        setTimeout(() => {
+          setSuccessMessage(null);
+        }, 3000);
+      }
+      return;
+    }
+
+    // Если есть только текст, проверяем его содержимое
+    if (hasText && textItems.length > 0) {
+      // Проверяем каждый текстовый элемент асинхронно
+      textItems.forEach(item => {
+        item.getAsString((text) => {
+          // Если текст содержит служебные данные (например, recent:// или другие системные префиксы),
+          // предотвращаем его вставку
+          if (text && (
+            text.startsWith('recent://') ||
+            text.startsWith('file://') ||
+            text.match(/^[a-f0-9]{32,}$/) || // Хеши
+            text.includes('://') && text.length < 100 && !text.includes(' ') // Подозрительные URL-подобные строки
+          )) {
+            console.log('Предотвращена вставка служебного текста:', text);
+            // Не вставляем служебный текст, но не показываем ошибку пользователю
+            return;
+          }
+        });
+      });
+    }
+
+    // Для обычного текста позволяем стандартному поведению
+  }, [attachments, MAX_FILES, MAX_FILE_SIZE]);
+
+  // Добавляем обработчик paste к текстовому полю описания
+  // ВРЕМЕННО ОТКЛЮЧЕНО: проблема с вставкой служебного текста
+  // useEffect(() => {
+  //   const descriptionElement = descriptionRef.current;
+  //   if (descriptionElement) {
+  //     const textArea = descriptionElement.querySelector('textarea');
+  //     if (textArea) {
+  //       textArea.addEventListener('paste', handlePaste);
+  //       return () => {
+  //         textArea.removeEventListener('paste', handlePaste);
+  //       };
+  //     }
+  //   }
+  // }, [handlePaste]);
 
   const removeAttachment = (id) => {
-    setAttachments(attachments.filter(att => att.id !== id));
+    const updatedAttachments = attachments.filter(att => att.id !== id);
+    // Освобождаем URL объекты для изображений
+    const removedFile = attachments.find(att => att.id === id);
+    if (removedFile && removedFile.preview) {
+      URL.revokeObjectURL(removedFile.preview);
+    }
+    setAttachments(updatedAttachments);
   };
 
   const formatFileSize = (bytes) => {
@@ -217,6 +356,12 @@ const CreateTicket = () => {
         </Alert>
       )}
 
+      {successMessage && (
+        <Alert severity="success" sx={{ mb: 3 }} onClose={() => setSuccessMessage(null)}>
+          {successMessage}
+        </Alert>
+      )}
+
       <form onSubmit={formik.handleSubmit}>
         <Grid container spacing={3}>
           {/* Main Form */}
@@ -251,6 +396,7 @@ const CreateTicket = () => {
                   onChange={formik.handleChange}
                   error={formik.touched.description && Boolean(formik.errors.description)}
                   helperText={formik.touched.description && formik.errors.description}
+                  ref={descriptionRef}
                   sx={{ mb: 3 }}
                 />
 
@@ -321,56 +467,20 @@ const CreateTicket = () => {
                     Вложения
                   </Typography>
                   
-                  <input
-                    accept="*/*"
-                    style={{ display: 'none' }}
-                    id="file-upload"
-                    multiple
-                    type="file"
-                    onChange={handleFileUpload}
+                  <FileDropZone
+                    files={attachments}
+                    onFilesChange={handleFilesChange}
+                    maxFiles={MAX_FILES}
+                    maxFileSize={MAX_FILE_SIZE}
+                    acceptedTypes="*/*"
+                    disabled={loading}
+                    showPreview={true}
+                    onImagePreview={handleImagePreview}
                   />
-                  <label htmlFor="file-upload">
-                    <Button
-                      variant="outlined"
-                      component="span"
-                      startIcon={<AttachFile />}
-                      sx={{ mb: 2 }}
-                    >
-                      Прикрепить файлы
-                    </Button>
-                  </label>
-
-                  {attachments.length > 0 && (
-                    <Paper sx={{ p: 2 }}>
-                      <Typography variant="subtitle2" mb={1}>
-                        Прикрепленные файлы:
-                      </Typography>
-                      {attachments.map((attachment) => (
-                        <Box
-                          key={attachment.id}
-                          display="flex"
-                          alignItems="center"
-                          justifyContent="space-between"
-                          sx={{ mb: 1 }}
-                        >
-                          <Box>
-                            <Typography variant="body2">
-                              {attachment.name}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {formatFileSize(attachment.size)}
-                            </Typography>
-                          </Box>
-                          <IconButton
-                            size="small"
-                            onClick={() => removeAttachment(attachment.id)}
-                          >
-                            <Delete />
-                          </IconButton>
-                        </Box>
-                      ))}
-                    </Paper>
-                  )}
+                  
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                    💡 Совет: Перетащите файлы в область выше или нажмите для выбора файлов
+                  </Typography>
                 </Box>
               </CardContent>
             </Card>
@@ -484,6 +594,15 @@ const CreateTicket = () => {
           </Grid>
         </Grid>
       </form>
+
+      {/* Image Preview Dialog */}
+      <ImagePreview
+        open={imagePreview.open}
+        onClose={closeImagePreview}
+        imageUrl={imagePreview.imageUrl}
+        imageName={imagePreview.imageName}
+        loading={imagePreview.loading}
+      />
     </Box>
   );
 };

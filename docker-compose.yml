@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: servicedesk
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    ports:
+      - "3007:3007"
+    environment:
+      - NODE_ENV=production
+      - DB_HOST=postgres
+      - DB_NAME=servicedesk
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+    depends_on:
+      - postgres
+    volumes:
+      - ./backend/logs:/app/logs
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:3007/api
+    depends_on:
+      - backend
+
+  telegram-bot:
+    build: ./telegram-bot
+    environment:
+      - NODE_ENV=production
+      - API_BASE_URL=http://backend:3007/api
+    depends_on:
+      - backend
+    volumes:
+      - ./telegram-bot/logs:/app/logs
+
+volumes:
+  postgres_data:
