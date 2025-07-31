@@ -39,6 +39,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import ConfirmDialog from '../components/ConfirmDialog';
+import axios from '../utils/axios';
 
 const UserList = () => {
   const navigate = useNavigate();
@@ -71,61 +72,27 @@ const UserList = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      // Используем реальный API для получения пользователей
-      const response = await fetch('/api/users', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      setError(null);
       
-      if (response.ok) {
-        const data = await response.json();
-        // Преобразуем данные в нужный формат
-        const formattedUsers = data.users.map(user => ({
-          id: user.id,
-          name: `${user.firstName} ${user.lastName}`,
-          email: user.email,
-          phone: user.phone || 'Не указан',
-          role: user.role,
-          status: user.isActive ? 'active' : 'inactive',
-          createdAt: user.createdAt,
-          lastLogin: user.lastLogin,
-          ticketsCount: 0 // TODO: Получать из статистики
-        }));
-        setUsers(formattedUsers);
-      } else {
-        throw new Error('Failed to fetch users');
-      }
+      // Используем настроенный axios instance
+      const response = await axios.get('/api/users');
+      
+      // Преобразуем данные в нужный формат
+      const formattedUsers = response.data.users.map(user => ({
+        id: user.id,
+        name: `${user.firstName} ${user.lastName}`,
+        email: user.email,
+        phone: user.phone || 'Не указан',
+        role: user.role,
+        status: user.isActive ? 'active' : 'inactive',
+        createdAt: user.createdAt,
+        lastLogin: user.lastLogin,
+        ticketsCount: 0 // TODO: Получать из статистики
+      }));
+      setUsers(formattedUsers);
     } catch (err) {
       console.error('Error fetching users:', err);
-      setError('Ошибка загрузки пользователей');
-      // Fallback к мокковым данным при ошибке
-      const mockUsers = [
-        {
-          id: 1,
-          name: 'Иван Петров',
-          email: 'ivan@example.com',
-          phone: '+7 (999) 123-45-67',
-          role: 'admin',
-          status: 'active',
-          createdAt: '2024-01-15T10:00:00Z',
-          lastLogin: '2024-01-25T14:30:00Z',
-          ticketsCount: 25
-        },
-        {
-          id: 2,
-          name: 'Мария Сидорова',
-          email: 'maria@example.com',
-          phone: '+7 (999) 234-56-78',
-          role: 'agent',
-          status: 'active',
-          createdAt: '2024-01-20T09:00:00Z',
-          lastLogin: '2024-01-25T16:45:00Z',
-          ticketsCount: 42
-        }
-      ];
-      setUsers(mockUsers);
+      setError(`Ошибка загрузки пользователей: ${err.response?.data?.message || err.message}`);
     } finally {
       setLoading(false);
     }
@@ -164,24 +131,12 @@ const UserList = () => {
 
   const confirmDeleteUser = async (userId) => {
     try {
-      // Используем реальный API для удаления пользователя
-      const response = await fetch(`/api/users/${userId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (response.ok) {
-        setUsers(users.filter(u => u.id !== userId));
-        setConfirmDialog({ ...confirmDialog, open: false });
-      } else {
-        throw new Error('Failed to delete user');
-      }
+      await axios.delete(`/api/users/${userId}`);
+      setUsers(users.filter(u => u.id !== userId));
+      setConfirmDialog({ ...confirmDialog, open: false });
     } catch (err) {
       console.error('Error deleting user:', err);
-      setError('Ошибка удаления пользователя');
+      setError(`Ошибка удаления пользователя: ${err.response?.data?.message || err.message}`);
       setConfirmDialog({ ...confirmDialog, open: false });
     }
   };
@@ -191,64 +146,41 @@ const UserList = () => {
       const userToUpdate = users.find(u => u.id === userId);
       const newIsActive = userToUpdate.status !== 'active';
       
-      // Используем реальный API для изменения статуса
-      const response = await fetch(`/api/users/${userId}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          isActive: newIsActive
-        })
+      await axios.put(`/api/users/${userId}`, {
+        isActive: newIsActive
       });
       
-      if (response.ok) {
-        const newStatus = newIsActive ? 'active' : 'inactive';
-        setUsers(users.map(u =>
-          u.id === userId ? { ...u, status: newStatus } : u
-        ));
-      } else {
-        throw new Error('Failed to update user status');
-      }
+      const newStatus = newIsActive ? 'active' : 'inactive';
+      setUsers(users.map(u =>
+        u.id === userId ? { ...u, status: newStatus } : u
+      ));
       
       handleMenuClose();
     } catch (err) {
       console.error('Error updating user status:', err);
-      setError('Ошибка изменения статуса пользователя');
+      setError(`Ошибка изменения статуса пользователя: ${err.response?.data?.message || err.message}`);
     }
   };
 
   const handleSaveUser = async () => {
     try {
-      // Используем реальный API для сохранения пользователя
       const [firstName, lastName] = selectedUser.name.split(' ');
-      const response = await fetch(`/api/users/${selectedUser.id}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          firstName: firstName || '',
-          lastName: lastName || '',
-          role: selectedUser.role,
-          isActive: selectedUser.status === 'active'
-        })
+      
+      await axios.put(`/api/users/${selectedUser.id}`, {
+        firstName: firstName || '',
+        lastName: lastName || '',
+        role: selectedUser.role,
+        isActive: selectedUser.status === 'active'
       });
       
-      if (response.ok) {
-        setUsers(users.map(u =>
-          u.id === selectedUser.id ? selectedUser : u
-        ));
-        setEditDialogOpen(false);
-        setSelectedUser(null);
-      } else {
-        throw new Error('Failed to update user');
-      }
+      setUsers(users.map(u =>
+        u.id === selectedUser.id ? selectedUser : u
+      ));
+      setEditDialogOpen(false);
+      setSelectedUser(null);
     } catch (err) {
       console.error('Error updating user:', err);
-      setError('Ошибка сохранения пользователя');
+      setError(`Ошибка сохранения пользователя: ${err.response?.data?.message || err.message}`);
     }
   };
 
@@ -263,7 +195,7 @@ const UserList = () => {
     switch (role) {
       case 'admin': return 'Администратор';
       case 'agent': return 'Агент';
-      case 'user': return 'Пользователь';
+      case 'client': return 'Клиент';
       default: return role;
     }
   };
@@ -272,7 +204,7 @@ const UserList = () => {
     switch (role) {
       case 'admin': return 'error';
       case 'agent': return 'warning';
-      case 'user': return 'primary';
+      case 'client': return 'primary';
       default: return 'default';
     }
   };
@@ -434,7 +366,7 @@ const UserList = () => {
                 <MenuItem value="all">Все роли</MenuItem>
                 <MenuItem value="admin">Администратор</MenuItem>
                 <MenuItem value="agent">Агент</MenuItem>
-                <MenuItem value="user">Пользователь</MenuItem>
+                <MenuItem value="client">Клиент</MenuItem>
               </Select>
             </FormControl>
             
@@ -542,7 +474,7 @@ const UserList = () => {
                   onChange={(e) => setSelectedUser({ ...selectedUser, role: e.target.value })}
                   disabled={!hasRole(['admin'])}
                 >
-                  <MenuItem value="user">Пользователь</MenuItem>
+                  <MenuItem value="client">Клиент</MenuItem>
                   <MenuItem value="agent">Агент</MenuItem>
                   <MenuItem value="admin">Администратор</MenuItem>
                 </Select>

@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест API пользователей</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .error {
+            color: red;
+            background: #ffe6e6;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            color: green;
+            background: #e6ffe6;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .user-card {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .user-role {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .role-admin { background: #dc3545; color: white; }
+        .role-agent { background: #ffc107; color: black; }
+        .role-client { background: #007bff; color: white; }
+        .user-status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-active { background: #28a745; color: white; }
+        .status-inactive { background: #6c757d; color: white; }
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Тест API загрузки пользователей</h1>
+    
+    <div class="container">
+        <h2>Авторизация</h2>
+        <button onclick="login()">Войти как администратор</button>
+        <button onclick="logout()">Выйти</button>
+        <div id="auth-status"></div>
+    </div>
+
+    <div class="container">
+        <h2>Загрузка пользователей</h2>
+        <button onclick="loadUsers()">Загрузить пользователей</button>
+        <button onclick="loadUsersWithFilters()">Загрузить с фильтрами</button>
+        <div id="users-status"></div>
+        <div id="users-list"></div>
+    </div>
+
+    <div class="container">
+        <h2>Отладочная информация</h2>
+        <div id="debug-info"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3007';
+        let authToken = localStorage.getItem('token');
+
+        function updateAuthStatus() {
+            const statusDiv = document.getElementById('auth-status');
+            if (authToken) {
+                statusDiv.innerHTML = '<div class="success">Авторизован</div>';
+            } else {
+                statusDiv.innerHTML = '<div class="error">Не авторизован</div>';
+            }
+        }
+
+        async function login() {
+            try {
+                const response = await fetch(`${API_BASE}/api/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: 'admin@servicedesk.com',
+                        password: 'admin123'
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    authToken = data.token;
+                    localStorage.setItem('token', authToken);
+                    document.getElementById('auth-status').innerHTML = 
+                        `<div class="success">Успешная авторизация как ${data.user.firstName} ${data.user.lastName}</div>`;
+                } else {
+                    document.getElementById('auth-status').innerHTML = 
+                        `<div class="error">Ошибка авторизации: ${data.message}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('auth-status').innerHTML = 
+                    `<div class="error">Ошибка сети: ${error.message}</div>`;
+            }
+        }
+
+        function logout() {
+            authToken = null;
+            localStorage.removeItem('token');
+            updateAuthStatus();
+            document.getElementById('users-list').innerHTML = '';
+            document.getElementById('users-status').innerHTML = '';
+        }
+
+        async function loadUsers() {
+            if (!authToken) {
+                document.getElementById('users-status').innerHTML = 
+                    '<div class="error">Необходима авторизация</div>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/users`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('users-status').innerHTML = 
+                        `<div class="success">Загружено ${data.users.length} пользователей</div>`;
+                    displayUsers(data.users);
+                    
+                    // Отладочная информация
+                    document.getElementById('debug-info').innerHTML = 
+                        `<h3>Ответ API:</h3><pre>${JSON.stringify(data, null, 2)}</pre>`;
+                } else {
+                    document.getElementById('users-status').innerHTML = 
+                        `<div class="error">Ошибка загрузки: ${data.message}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('users-status').innerHTML = 
+                    `<div class="error">Ошибка сети: ${error.message}</div>`;
+            }
+        }
+
+        async function loadUsersWithFilters() {
+            if (!authToken) {
+                document.getElementById('users-status').innerHTML = 
+                    '<div class="error">Необходима авторизация</div>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/users?role=admin&isActive=true&limit=5`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('users-status').innerHTML = 
+                        `<div class="success">Загружено ${data.users.length} администраторов</div>`;
+                    displayUsers(data.users);
+                } else {
+                    document.getElementById('users-status').innerHTML = 
+                        `<div class="error">Ошибка загрузки: ${data.message}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('users-status').innerHTML = 
+                    `<div class="error">Ошибка сети: ${error.message}</div>`;
+            }
+        }
+
+        function displayUsers(users) {
+            const usersDiv = document.getElementById('users-list');
+            
+            if (users.length === 0) {
+                usersDiv.innerHTML = '<div class="error">Пользователи не найдены</div>';
+                return;
+            }
+
+            const usersHtml = users.map(user => `
+                <div class="user-card">
+                    <h3>${user.firstName} ${user.lastName}</h3>
+                    <p><strong>Email:</strong> ${user.email}</p>
+                    <p><strong>Username:</strong> ${user.username}</p>
+                    <p><strong>Роль:</strong> <span class="user-role role-${user.role}">${getRoleText(user.role)}</span></p>
+                    <p><strong>Статус:</strong> <span class="user-status status-${user.isActive ? 'active' : 'inactive'}">${user.isActive ? 'Активен' : 'Неактивен'}</span></p>
+                    <p><strong>Отдел:</strong> ${user.department || 'Не указан'}</p>
+                    <p><strong>Компания:</strong> ${user.company || 'Не указана'}</p>
+                    <p><strong>Последний вход:</strong> ${user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Никогда'}</p>
+                </div>
+            `).join('');
+
+            usersDiv.innerHTML = usersHtml;
+        }
+
+        function getRoleText(role) {
+            switch (role) {
+                case 'admin': return 'Администратор';
+                case 'agent': return 'Агент';
+                case 'client': return 'Клиент';
+                default: return role;
+            }
+        }
+
+        // Инициализация
+        updateAuthStatus();
+    </script>
+</body>
+</html>
