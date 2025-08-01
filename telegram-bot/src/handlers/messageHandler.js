@@ -50,12 +50,12 @@ exports.handleText = async (ctx) => {
               parse_mode: 'HTML',
               ...Markup.inlineKeyboard([
                 [
-                  Markup.button.callback('🔥 Инцидент', 'category:incident'),
-                  Markup.button.callback('📝 Запрос', 'category:request')
+                  Markup.button.callback('🔧 Техническая', 'category:technical'),
+                  Markup.button.callback('💰 Биллинг', 'category:billing')
                 ],
                 [
-                  Markup.button.callback('❓ Проблема', 'category:problem'),
-                  Markup.button.callback('🔄 Изменение', 'category:change')
+                  Markup.button.callback('❓ Общая', 'category:general'),
+                  Markup.button.callback('✨ Новая функция', 'category:feature_request')
                 ]
               ])
             }
@@ -169,12 +169,12 @@ exports.handlePhoto = async (ctx) => {
             parse_mode: 'HTML',
             ...Markup.inlineKeyboard([
               [
-                Markup.button.callback('🔥 Инцидент', 'category:incident'),
-                Markup.button.callback('📝 Запрос', 'category:request')
+                Markup.button.callback('🔧 Техническая', 'category:technical'),
+                Markup.button.callback('💰 Биллинг', 'category:billing')
               ],
               [
-                Markup.button.callback('❓ Проблема', 'category:problem'),
-                Markup.button.callback('🔄 Изменение', 'category:change')
+                Markup.button.callback('❓ Общая', 'category:general'),
+                Markup.button.callback('✨ Новая функция', 'category:feature_request')
               ]
             ])
           }
@@ -284,12 +284,12 @@ exports.handleDocument = async (ctx) => {
             parse_mode: 'HTML',
             ...Markup.inlineKeyboard([
               [
-                Markup.button.callback('🔥 Инцидент', 'category:incident'),
-                Markup.button.callback('📝 Запрос', 'category:request')
+                Markup.button.callback('🔧 Техническая', 'category:technical'),
+                Markup.button.callback('💰 Биллинг', 'category:billing')
               ],
               [
-                Markup.button.callback('❓ Проблема', 'category:problem'),
-                Markup.button.callback('🔄 Изменение', 'category:change')
+                Markup.button.callback('❓ Общая', 'category:general'),
+                Markup.button.callback('✨ Новая функция', 'category:feature_request')
               ]
             ])
           }
@@ -504,14 +504,14 @@ async function handleTicketCommentWithMedia(ctx, content, attachment) {
  */
 function translateCategory(category) {
   switch (category) {
-    case 'incident':
-      return 'Инцидент';
-    case 'request':
-      return 'Запрос';
-    case 'problem':
-      return 'Проблема';
-    case 'change':
-      return 'Изменение';
+    case 'technical':
+      return 'Техническая';
+    case 'billing':
+      return 'Биллинг';
+    case 'general':
+      return 'Общая';
+    case 'feature_request':
+      return 'Новая функция';
     default:
       return category;
   }

@@ -58,9 +58,10 @@ async function handleCategorySelection(ctx, category) {
     ctx.session = ctx.session || {};
     ctx.session.ticketData = ctx.session.ticketData || {};
     
-    // Use the category directly as it matches database enum
+    // Set category (now matches database enum)
     ctx.session.ticketData.category = category;
-    ctx.session.ticketData.type = 'incident'; // Default type
+    // Set default type based on category
+    ctx.session.ticketData.type = getDefaultTypeForCategory(category);
     
     // Answer callback query
     await ctx.answerCbQuery(`Выбрана категория: ${translateCategory(category)}`);
@@ -156,9 +157,14 @@ async function handleTicketConfirmation(ctx, confirmed) {
       if (userResponse.data && userResponse.data.user) {
         const user = userResponse.data.user;
         
-        // Create ticket
+        // Create ticket (without attachments first)
         const ticketData = {
-          ...ctx.session.ticketData,
+          title: ctx.session.ticketData.title,
+          description: ctx.session.ticketData.description,
+          category: ctx.session.ticketData.category,
+          priority: ctx.session.ticketData.priority,
+          type: ctx.session.ticketData.type,
+          source: ctx.session.ticketData.source,
           createdById: user.id,
           telegramMessageId: ctx.callbackQuery.message.message_id.toString()
         };
@@ -168,13 +174,35 @@ async function handleTicketConfirmation(ctx, confirmed) {
         if (ticketResponse.data && ticketResponse.data.ticket) {
           const ticket = ticketResponse.data.ticket;
           
+          // Upload attachments if any exist
+          if (ctx.session.ticketData.attachments && ctx.session.ticketData.attachments.length > 0) {
+            try {
+              await uploadAttachmentsToTicket(ctx, ticket.id, ctx.session.ticketData.attachments);
+              logger.info('✅ СОЗДАНИЕ ЗАЯВКИ - Вложения успешно загружены', {
+                ticketId: ticket.id,
+                attachmentsCount: ctx.session.ticketData.attachments.length
+              });
+            } catch (attachmentError) {
+              logger.error('❌ СОЗДАНИЕ ЗАЯВКИ - Ошибка загрузки вложений:', {
+                ticketId: ticket.id,
+                error: attachmentError.message,
+                attachmentsCount: ctx.session.ticketData.attachments.length
+              });
+              // Продолжаем выполнение, даже если вложения не загрузились
+            }
+          }
+          
           // Success message
+          const attachmentInfo = ctx.session.ticketData.attachments && ctx.session.ticketData.attachments.length > 0
+            ? `\n<b>Вложения:</b> ${ctx.session.ticketData.attachments.length} файл(ов)\n`
+            : '\n';
+          
           await ctx.editMessageText(
             `✅ Заявка успешно создана!\n\n` +
             `<b>ID:</b> ${ticket.id.substring(0, 8)}\n` +
             `<b>Тема:</b> ${ticket.title}\n` +
             `<b>Категория:</b> ${translateCategory(ticket.category)}\n` +
-            `<b>Приоритет:</b> ${translatePriority(ticket.priority)}\n\n` +
+            `<b>Приоритет:</b> ${translatePriority(ticket.priority)}${attachmentInfo}\n` +
             `Вы можете проверить статус заявки с помощью команды:\n` +
             `/status ${ticket.id.substring(0, 8)}`,
             {
@@ -247,6 +275,113 @@ function translateCategory(category) {
     default:
       return category;
   }
+}
+
+/**
+ * Get default type for category
+ */
+function getDefaultTypeForCategory(category) {
+  switch (category) {
+    case 'technical':
+      return 'incident'; // Технические проблемы обычно инциденты
+    case 'billing':
+      return 'service_request'; // Вопросы по биллингу - запросы на обслуживание
+    case 'general':
+      return 'service_request'; // Общие вопросы - запросы на обслуживание
+    case 'feature_request':
+      return 'change_request'; // Новые функции - запросы на изменения
+    default:
+      return 'incident';
+  }
+}
+
+/**
+ * Upload attachments to ticket
+ */
+async function uploadAttachmentsToTicket(ctx, ticketId, attachments) {
+  const { apiClient, logger } = ctx;
+  const axios = require('axios');
+  const FormData = require('form-data');
+  
+  logger.info('📎 ЗАГРУЗКА ВЛОЖЕНИЙ - Начало загрузки', {
+    ticketId: ticketId,
+    attachmentsCount: attachments.length
+  });
+  
+  for (const attachment of attachments) {
+    try {
+      // Download file from Telegram
+      logger.info('⬇️ ЗАГРУЗКА ВЛОЖЕНИЙ - Скачивание файла из Telegram', {
+        ticketId: ticketId,
+        fileName: attachment.fileName,
+        fileUrl: attachment.fileUrl
+      });
+      
+      const fileResponse = await axios.get(attachment.fileUrl, {
+        responseType: 'arraybuffer',
+        timeout: 30000 // 30 seconds timeout
+      });
+      
+      // Create form data
+      const formData = new FormData();
+      formData.append('files', fileResponse.data, {
+        filename: attachment.fileName,
+        contentType: attachment.mimeType
+      });
+      
+      // Upload to backend
+      logger.info('⬆️ ЗАГРУЗКА ВЛОЖЕНИЙ - Отправка файла на сервер', {
+        ticketId: ticketId,
+        fileName: attachment.fileName,
+        fileSize: fileResponse.data.length
+      });
+      
+      const uploadResponse = await apiClient.post(
+        `/tickets/${ticketId}/attachments`,
+        formData,
+        {
+          headers: {
+            ...formData.getHeaders(),
+            'Content-Type': 'multipart/form-data'
+          },
+          timeout: 60000, // 60 seconds timeout for upload
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity
+        }
+      );
+      
+      if (uploadResponse.data && uploadResponse.data.attachments) {
+        logger.info('✅ ЗАГРУЗКА ВЛОЖЕНИЙ - Файл успешно загружен', {
+          ticketId: ticketId,
+          fileName: attachment.fileName,
+          attachmentId: uploadResponse.data.attachments[0]?.id
+        });
+      } else {
+        logger.error('❌ ЗАГРУЗКА ВЛОЖЕНИЙ - Неожиданный ответ сервера', {
+          ticketId: ticketId,
+          fileName: attachment.fileName,
+          response: uploadResponse.data
+        });
+      }
+      
+    } catch (error) {
+      logger.error('❌ ЗАГРУЗКА ВЛОЖЕНИЙ - Ошибка загрузки файла:', {
+        ticketId: ticketId,
+        fileName: attachment.fileName,
+        error: error.message,
+        stack: error.stack,
+        response: error.response?.data
+      });
+      
+      // Продолжаем загрузку других файлов, даже если один не загрузился
+      continue;
+    }
+  }
+  
+  logger.info('🎉 ЗАГРУЗКА ВЛОЖЕНИЙ - Процесс завершен', {
+    ticketId: ticketId,
+    totalAttachments: attachments.length
+  });
 }
 
 /**
