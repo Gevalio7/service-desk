@@ -19,7 +19,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # Среда выполнения
-.env
+# .env - убрано из игнора для включения в репозиторий
 .env.local
 .env.development.local
 .env.test.local
