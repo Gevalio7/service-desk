@@ -261,23 +261,78 @@ exports.getProfile = async (req, res) => {
  */
 exports.updateProfile = async (req, res) => {
   try {
+    logger.info('🔄 Profile update attempt', {
+      userId: req.user?.id,
+      fields: Object.keys(req.body),
+      ip: req.ip
+    });
+
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      logger.warn('❌ Profile update validation failed', {
+        errors: errors.array(),
+        userId: req.user?.id,
+        ip: req.ip
+      });
+      return res.status(400).json({
+        message: 'Ошибка валидации данных',
+        errors: errors.array()
+      });
+    }
+
     const { firstName, lastName, department, company, telegramId } = req.body;
     
     // Find user
     const user = await User.findByPk(req.user.id);
     
     if (!user) {
+      logger.warn('❌ User not found in updateProfile', {
+        userId: req.user?.id,
+        ip: req.ip
+      });
       return res.status(404).json({ message: 'User not found' });
     }
     
-    // Update user fields
-    if (firstName) user.firstName = firstName;
-    if (lastName) user.lastName = lastName;
-    if (department) user.department = department;
-    if (company) user.company = company;
-    if (telegramId) user.telegramId = telegramId;
+    // Validate required fields if provided
+    if (firstName !== undefined && (!firstName || firstName.trim().length === 0)) {
+      return res.status(400).json({ message: 'Имя не может быть пустым' });
+    }
+    
+    if (lastName !== undefined && (!lastName || lastName.trim().length === 0)) {
+      return res.status(400).json({ message: 'Фамилия не может быть пустой' });
+    }
+
+    // Check if telegramId is unique (if provided and different from current)
+    if (telegramId && telegramId !== user.telegramId) {
+      const existingUser = await User.findOne({
+        where: {
+          telegramId,
+          id: { [Op.ne]: user.id } // Exclude current user
+        }
+      });
+      
+      if (existingUser) {
+        return res.status(400).json({
+          message: 'Этот Telegram ID уже используется другим пользователем'
+        });
+      }
+    }
+    
+    // Update user fields (allow setting to null/empty for optional fields)
+    if (firstName !== undefined) user.firstName = firstName.trim();
+    if (lastName !== undefined) user.lastName = lastName.trim();
+    if (department !== undefined) user.department = department ? department.trim() : null;
+    if (company !== undefined) user.company = company ? company.trim() : null;
+    if (telegramId !== undefined) user.telegramId = telegramId ? telegramId.trim() : null;
     
     await user.save();
+    
+    logger.info('✅ Profile updated successfully', {
+      userId: user.id,
+      updatedFields: Object.keys(req.body),
+      ip: req.ip
+    });
     
     // Return updated user data without password
     const userData = user.toJSON();
@@ -288,8 +343,13 @@ exports.updateProfile = async (req, res) => {
       user: userData
     });
   } catch (error) {
-    logger.error('Error in updateProfile controller:', error);
-    res.status(500).json({ 
+    logger.error('💥 Error in updateProfile controller:', {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user?.id,
+      ip: req.ip
+    });
+    res.status(500).json({
       message: 'Error updating user profile',
       error: process.env.NODE_ENV === 'production' ? {} : error.message
     });

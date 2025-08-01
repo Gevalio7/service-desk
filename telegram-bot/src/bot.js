@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Telegraf, Markup } = require('telegraf');
+const { Telegraf, Markup, session } = require('telegraf');
 const axios = require('axios');
 const winston = require('winston');
 
@@ -48,7 +48,7 @@ const callbackHandler = require('./handlers/callbackHandler');
 const messageHandler = require('./handlers/messageHandler');
 
 // API configuration
-const API_URL = process.env.API_URL || 'http://localhost:3000/api';
+const API_URL = process.env.API_BASE_URL || 'http://localhost:3007/api';
 const API_TOKEN = process.env.API_TOKEN; // Service account token for API access
 
 // Configure axios for API requests
@@ -59,6 +59,9 @@ const apiClient = axios.create({
     'Content-Type': 'application/json'
   }
 });
+
+// Add session middleware
+bot.use(session());
 
 // Make API client available to handlers
 bot.context.apiClient = apiClient;

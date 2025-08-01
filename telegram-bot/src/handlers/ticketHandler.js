@@ -21,12 +21,12 @@ exports.handleNewTicket = async (ctx) => {
       'Выберите категорию заявки:',
       Markup.inlineKeyboard([
         [
-          Markup.button.callback('🔥 Инцидент', 'category:incident'),
-          Markup.button.callback('📝 Запрос', 'category:request')
+          Markup.button.callback('🔧 Техническая', 'category:technical'),
+          Markup.button.callback('💰 Биллинг', 'category:billing')
         ],
         [
-          Markup.button.callback('❓ Проблема', 'category:problem'),
-          Markup.button.callback('🔄 Изменение', 'category:change')
+          Markup.button.callback('📋 Общая', 'category:general'),
+          Markup.button.callback('💡 Новая функция', 'category:feature_request')
         ]
       ])
     );
@@ -76,11 +76,11 @@ exports.handleListTickets = async (ctx) => {
             const statusEmoji = getStatusEmoji(ticket.status);
             const priorityEmoji = getPriorityEmoji(ticket.priority);
             
-            message += `${statusEmoji} ${priorityEmoji} <b>#${ticket.id.substring(0, 8)}</b>: ${ticket.title}\n`;
+            message += `${statusEmoji} ${priorityEmoji} <b>№${ticket.id.substring(0, 8)}</b>: ${ticket.title}\n`;
             message += `Статус: ${translateStatus(ticket.status)} | Создана: ${createdAt}\n\n`;
           }
           
-          message += 'Для просмотра деталей заявки используйте команду /status <ID>';
+          message += 'Для просмотра деталей заявки используйте команду /status [ID]';
           
           await ctx.reply(message, { parse_mode: 'HTML' });
         } else {
@@ -97,7 +97,13 @@ exports.handleListTickets = async (ctx) => {
           'Вы не зарегистрированы в системе. Пожалуйста, обратитесь к администратору для создания учетной записи.'
         );
       } else {
-        logger.error('Error getting user tickets:', error);
+        logger.error('Error getting user tickets:', {
+          error: error.message,
+          stack: error.stack,
+          response: error.response?.data,
+          status: error.response?.status,
+          telegramId: id
+        });
         await ctx.reply('Произошла ошибка при получении списка заявок. Пожалуйста, попробуйте позже.');
       }
     }
@@ -151,7 +157,7 @@ exports.handleCheckStatus = async (ctx) => {
             const statusEmoji = getStatusEmoji(ticket.status);
             const priorityEmoji = getPriorityEmoji(ticket.priority);
             
-            let message = `${statusEmoji} ${priorityEmoji} <b>Заявка #${ticket.id.substring(0, 8)}</b>\n\n`;
+            let message = `${statusEmoji} ${priorityEmoji} <b>Заявка №${ticket.id.substring(0, 8)}</b>\n\n`;
             message += `<b>Тема:</b> ${ticket.title}\n`;
             message += `<b>Описание:</b> ${ticket.description}\n\n`;
             message += `<b>Статус:</b> ${translateStatus(ticket.status)}\n`;
@@ -257,6 +263,15 @@ function getStatusEmoji(status) {
  */
 function getPriorityEmoji(priority) {
   switch (priority) {
+    case 'urgent':
+      return '🔴';
+    case 'high':
+      return '🟠';
+    case 'medium':
+      return '🟡';
+    case 'low':
+      return '🟢';
+    // Поддержка старых значений для совместимости
     case 'P1':
       return '🔴';
     case 'P2':
@@ -297,6 +312,15 @@ function translateStatus(status) {
  */
 function translatePriority(priority) {
   switch (priority) {
+    case 'urgent':
+      return 'Критический';
+    case 'high':
+      return 'Высокий';
+    case 'medium':
+      return 'Средний';
+    case 'low':
+      return 'Низкий';
+    // Поддержка старых значений для совместимости
     case 'P1':
       return 'Критический';
     case 'P2':
@@ -315,14 +339,14 @@ function translatePriority(priority) {
  */
 function translateCategory(category) {
   switch (category) {
-    case 'incident':
-      return 'Инцидент';
-    case 'request':
-      return 'Запрос';
-    case 'problem':
-      return 'Проблема';
-    case 'change':
-      return 'Изменение';
+    case 'technical':
+      return 'Техническая';
+    case 'billing':
+      return 'Биллинг';
+    case 'general':
+      return 'Общая';
+    case 'feature_request':
+      return 'Новая функция';
     default:
       return category;
   }

@@ -41,7 +41,7 @@ const validationSchema = yup.object({
   priority: yup
     .string('Выберите приоритет')
     .required('Приоритет обязателен')
-    .oneOf(['low', 'medium', 'high', 'critical'], 'Неверный приоритет'),
+    .oneOf(['low', 'medium', 'high', 'urgent'], 'Неверный приоритет'),
   category: yup
     .string('Выберите категорию')
     .required('Категория обязательна')
@@ -304,7 +304,7 @@ const CreateTicket = () => {
       case 'low': return 'Низкий';
       case 'medium': return 'Средний';
       case 'high': return 'Высокий';
-      case 'critical': return 'Критический';
+      case 'urgent': return 'Критический';
       default: return priority;
     }
   };
@@ -435,7 +435,7 @@ const CreateTicket = () => {
                         <MenuItem value="low">Низкий</MenuItem>
                         <MenuItem value="medium">Средний</MenuItem>
                         <MenuItem value="high">Высокий</MenuItem>
-                        <MenuItem value="critical">Критический</MenuItem>
+                        <MenuItem value="urgent">Критический</MenuItem>
                       </Select>
                     </FormControl>
                   </Grid>
@@ -528,7 +528,7 @@ const CreateTicket = () => {
                     label={getPriorityText(formik.values.priority)}
                     size="small"
                     color={
-                      formik.values.priority === 'critical' || formik.values.priority === 'high'
+                      formik.values.priority === 'urgent' || formik.values.priority === 'high'
                         ? 'error'
                         : formik.values.priority === 'medium'
                         ? 'warning'

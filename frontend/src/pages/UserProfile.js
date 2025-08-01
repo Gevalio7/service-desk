@@ -43,11 +43,16 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 
 const profileValidationSchema = yup.object({
-  name: yup
+  firstName: yup
     .string('Введите имя')
     .required('Имя обязательно')
     .min(2, 'Имя должно содержать минимум 2 символа')
     .max(50, 'Имя не должно превышать 50 символов'),
+  lastName: yup
+    .string('Введите фамилию')
+    .required('Фамилия обязательна')
+    .min(2, 'Фамилия должна содержать минимум 2 символа')
+    .max(50, 'Фамилия не должна превышать 50 символов'),
   email: yup
     .string('Введите email')
     .email('Введите корректный email')
@@ -55,6 +60,13 @@ const profileValidationSchema = yup.object({
   phone: yup
     .string('Введите телефон')
     .matches(/^\+?[1-9]\d{1,14}$/, 'Введите корректный номер телефона'),
+  telegramId: yup
+    .string('Введите Telegram ID')
+    .matches(/^@?[a-zA-Z0-9_]{5,32}$/, 'Telegram ID должен содержать от 5 до 32 символов (буквы, цифры, подчеркивания)'),
+  department: yup
+    .string('Введите отдел'),
+  company: yup
+    .string('Введите компанию'),
 });
 
 const passwordValidationSchema = yup.object({
@@ -189,9 +201,13 @@ const UserProfile = () => {
 
   const profileFormik = useFormik({
     initialValues: {
-      name: user?.name || '',
+      firstName: user?.firstName || '',
+      lastName: user?.lastName || '',
       email: user?.email || '',
       phone: user?.phone || '',
+      telegramId: user?.telegramId || '',
+      department: user?.department || '',
+      company: user?.company || '',
     },
     validationSchema: profileValidationSchema,
     onSubmit: async (values) => {
@@ -307,7 +323,7 @@ const UserProfile = () => {
         </Avatar>
         <Box flexGrow={1}>
           <Typography variant="h4" component="h1">
-            {user?.name || 'Пользователь'}
+            {user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : 'Пользователь'}
           </Typography>
           <Typography variant="body1" color="text.secondary">
             {user?.email}
@@ -354,22 +370,39 @@ const UserProfile = () => {
             
             <form onSubmit={profileFormik.handleSubmit}>
               <Grid container spacing={3}>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    fullWidth
-                    id="name"
-                    name="name"
-                    label="Полное имя"
-                    value={profileFormik.values.name}
-                    onChange={profileFormik.handleChange}
-                    error={profileFormik.touched.name && Boolean(profileFormik.errors.name)}
-                    helperText={profileFormik.touched.name && profileFormik.errors.name}
-                    disabled={!editMode}
-                    InputProps={{
-                      startAdornment: <Person sx={{ mr: 1, color: 'text.secondary' }} />
-                    }}
-                  />
-                </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  id="firstName"
+                  name="firstName"
+                  label="Имя"
+                  value={profileFormik.values.firstName}
+                  onChange={profileFormik.handleChange}
+                  error={profileFormik.touched.firstName && Boolean(profileFormik.errors.firstName)}
+                  helperText={profileFormik.touched.firstName && profileFormik.errors.firstName}
+                  disabled={!editMode}
+                  InputProps={{
+                    startAdornment: <Person sx={{ mr: 1, color: 'text.secondary' }} />
+                  }}
+                />
+              </Grid>
+              
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  id="lastName"
+                  name="lastName"
+                  label="Фамилия"
+                  value={profileFormik.values.lastName}
+                  onChange={profileFormik.handleChange}
+                  error={profileFormik.touched.lastName && Boolean(profileFormik.errors.lastName)}
+                  helperText={profileFormik.touched.lastName && profileFormik.errors.lastName}
+                  disabled={!editMode}
+                  InputProps={{
+                    startAdornment: <Person sx={{ mr: 1, color: 'text.secondary' }} />
+                  }}
+                />
+              </Grid>
                 
                 <Grid item xs={12} md={6}>
                   <TextField
@@ -403,6 +436,49 @@ const UserProfile = () => {
                     InputProps={{
                       startAdornment: <Phone sx={{ mr: 1, color: 'text.secondary' }} />
                     }}
+                  />
+                </Grid>
+                
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    id="telegramId"
+                    name="telegramId"
+                    label="Telegram ID"
+                    value={profileFormik.values.telegramId}
+                    onChange={profileFormik.handleChange}
+                    error={profileFormik.touched.telegramId && Boolean(profileFormik.errors.telegramId)}
+                    helperText={profileFormik.touched.telegramId && profileFormik.errors.telegramId}
+                    disabled={!editMode}
+                    placeholder="@username или username"
+                  />
+                </Grid>
+                
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    id="department"
+                    name="department"
+                    label="Отдел"
+                    value={profileFormik.values.department}
+                    onChange={profileFormik.handleChange}
+                    error={profileFormik.touched.department && Boolean(profileFormik.errors.department)}
+                    helperText={profileFormik.touched.department && profileFormik.errors.department}
+                    disabled={!editMode}
+                  />
+                </Grid>
+                
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    id="company"
+                    name="company"
+                    label="Компания"
+                    value={profileFormik.values.company}
+                    onChange={profileFormik.handleChange}
+                    error={profileFormik.touched.company && Boolean(profileFormik.errors.company)}
+                    helperText={profileFormik.touched.company && profileFormik.errors.company}
+                    disabled={!editMode}
                   />
                 </Grid>
                 

@@ -27,6 +27,19 @@ router.get(
 );
 
 /**
+ * @route GET /api/users/telegram/:telegramId
+ * @desc Get user by Telegram ID
+ * @access Public (used by Telegram bot)
+ */
+router.get(
+  '/telegram/:telegramId',
+  [
+    param('telegramId').notEmpty().withMessage('Telegram ID is required')
+  ],
+  userController.getUserByTelegramId
+);
+
+/**
  * @route GET /api/users/:id
  * @desc Get user by ID
  * @access Private (Staff or self)

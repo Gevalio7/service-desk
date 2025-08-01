@@ -5,6 +5,9 @@ const { logger } = require('../../config/database');
 // JWT secret key - should be in environment variables in production
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
+// Service API token for internal services like Telegram bot
+const SERVICE_API_TOKEN = process.env.SERVICE_API_TOKEN || 'service-desk-api-token';
+
 /**
  * Middleware to authenticate JWT token
  */
@@ -17,7 +20,17 @@ exports.authenticate = async (req, res, next) => {
       return res.status(401).json({ message: 'No token, authorization denied' });
     }
     
-    // Verify token
+    // Check if it's a service API token (for Telegram bot)
+    if (token === SERVICE_API_TOKEN) {
+      // For service token, skip user validation - let controller handle createdById
+      req.user = {
+        id: null, // Will be handled by controller
+        role: 'system'
+      };
+      return next();
+    }
+    
+    // Verify JWT token
     const decoded = jwt.verify(token, JWT_SECRET);
     
     // Find user

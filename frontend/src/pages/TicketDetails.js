@@ -114,6 +114,7 @@ const TicketDetails = () => {
         status: ticketData.status,
         priority: ticketData.priority,
         category: ticketData.category,
+        type: ticketData.type,
         createdAt: ticketData.createdAt,
         updatedAt: ticketData.updatedAt,
         assignedTo: ticketData.assignedTo ? {
@@ -516,7 +517,8 @@ const TicketDetails = () => {
         title: editedTicket.title,
         description: editedTicket.description,
         status: editedTicket.status,
-        priority: editedTicket.priority
+        priority: editedTicket.priority,
+        type: editedTicket.type
       };
       
       console.log('📤 ОБНОВЛЕНИЕ ТИКЕТА - Отправка запроса', {
@@ -539,6 +541,7 @@ const TicketDetails = () => {
         description: editedTicket.description,
         status: editedTicket.status,
         priority: editedTicket.priority,
+        type: editedTicket.type,
         updatedAt: new Date().toISOString()
       };
       
@@ -706,6 +709,24 @@ const TicketDetails = () => {
     }
   };
 
+  const getTypeText = (type) => {
+    switch (type) {
+      case 'incident': return 'Инцидент';
+      case 'service_request': return 'Запрос на обслуживание';
+      case 'change_request': return 'Запрос на изменение';
+      default: return type;
+    }
+  };
+
+  const getTypeColor = (type) => {
+    switch (type) {
+      case 'incident': return 'error';
+      case 'service_request': return 'primary';
+      case 'change_request': return 'info';
+      default: return 'default';
+    }
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -789,7 +810,7 @@ const TicketDetails = () => {
                 <Typography variant="h5" component="h2" flexGrow={1}>
                   {ticket.title}
                 </Typography>
-                <Box display="flex" gap={1}>
+                <Box display="flex" gap={1} flexWrap="wrap">
                   <Chip
                     label={getStatusText(ticket.status)}
                     color={getStatusColor(ticket.status)}
@@ -801,6 +822,14 @@ const TicketDetails = () => {
                     size="small"
                     icon={<PriorityHigh />}
                   />
+                  {ticket.type && (
+                    <Chip
+                      label={getTypeText(ticket.type)}
+                      color={getTypeColor(ticket.type)}
+                      size="small"
+                      variant="outlined"
+                    />
+                  )}
                 </Box>
               </Box>
               
@@ -1009,6 +1038,17 @@ const TicketDetails = () => {
               
               <Divider sx={{ my: 2 }} />
               
+              {ticket.type && (
+                <Box mb={2}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Тип запроса
+                  </Typography>
+                  <Typography variant="body2">
+                    {getTypeText(ticket.type)}
+                  </Typography>
+                </Box>
+              )}
+              
               <Box mb={2}>
                 <Typography variant="subtitle2" color="text.secondary">
                   Автор
@@ -1122,6 +1162,18 @@ const TicketDetails = () => {
               <MenuItem value="medium">Средний</MenuItem>
               <MenuItem value="high">Высокий</MenuItem>
               <MenuItem value="critical">Критический</MenuItem>
+            </Select>
+          </FormControl>
+          
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>Тип запроса</InputLabel>
+            <Select
+              value={editedTicket.type || ''}
+              onChange={(e) => setEditedTicket({ ...editedTicket, type: e.target.value })}
+            >
+              <MenuItem value="incident">Инцидент</MenuItem>
+              <MenuItem value="service_request">Запрос на обслуживание</MenuItem>
+              <MenuItem value="change_request">Запрос на изменение</MenuItem>
             </Select>
           </FormControl>
         </DialogContent>

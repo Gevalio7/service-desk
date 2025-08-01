@@ -31,7 +31,8 @@ exports.createTicket = async (req, res) => {
       type,
       tags,
       source,
-      telegramMessageId
+      telegramMessageId,
+      createdById
     } = req.body;
     
     // Валидация обязательных полей
@@ -50,11 +51,28 @@ exports.createTicket = async (req, res) => {
       });
     }
 
+    // Определяем createdById: если req.user.id null (service token), используем createdById из body
+    const finalCreatedById = req.user?.id || createdById;
+    
+    if (!finalCreatedById) {
+      logger.error('❌ СОЗДАНИЕ ЗАЯВКИ - Не указан создатель заявки', {
+        reqUserId: req.user?.id,
+        bodyCreatedById: createdById,
+        source: source
+      });
+      return res.status(400).json({
+        message: 'Creator ID is required',
+        error: 'No valid createdById found'
+      });
+    }
+
     logger.info('✅ СОЗДАНИЕ ЗАЯВКИ - Валидация пройдена, создаем заявку', {
       title,
       category: category || 'request',
       priority: priority || 'P3',
-      userId: req.user.id
+      userId: req.user?.id,
+      finalCreatedById: finalCreatedById,
+      source: source
     });
     
     // Create ticket
@@ -68,7 +86,7 @@ exports.createTicket = async (req, res) => {
       tags: tags || [],
       source: source || 'web',
       telegramMessageId,
-      createdById: req.user.id
+      createdById: finalCreatedById
     });
     
     logger.info('🎉 СОЗДАНИЕ ЗАЯВКИ - Заявка успешно создана', {
@@ -213,6 +231,10 @@ exports.getTickets = async (req, res) => {
     if (req.user.role === 'client') {
       // Clients can only see their own tickets
       where.createdById = req.user.id;
+    } else if (req.user.role === 'system') {
+      // System requests (like from Telegram bot) can filter by createdById parameter
+      // This allows the bot to get tickets for specific users
+      // The createdById parameter should be provided in the query
     }
     
     // Calculate pagination
@@ -347,6 +369,12 @@ exports.getTicketById = async (req, res) => {
         ticketCreatedById: ticket.createdById
       });
       return res.status(403).json({ message: 'Access denied' });
+    } else if (req.user.role === 'system') {
+      // System requests (like from Telegram bot) have full access to all tickets
+      logger.info('🤖 ПОЛУЧЕНИЕ ТИКЕТА - Системный запрос, полный доступ', {
+        ticketId: id,
+        userRole: req.user?.role
+      });
     }
     
     logger.info('✅ ПОЛУЧЕНИЕ ТИКЕТА - Тикет успешно найден', {

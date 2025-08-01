@@ -83,6 +83,7 @@ const UserList = () => {
         name: `${user.firstName} ${user.lastName}`,
         email: user.email,
         phone: user.phone || 'Не указан',
+        telegramId: user.telegramId || 'Не указан',
         role: user.role,
         status: user.isActive ? 'active' : 'inactive',
         createdAt: user.createdAt,
@@ -110,7 +111,14 @@ const UserList = () => {
 
   const handleEditUser = (userId) => {
     const userToEdit = users.find(u => u.id === userId);
-    setSelectedUser(userToEdit);
+    // Разделяем имя на firstName и lastName для редактирования
+    const [firstName, lastName] = userToEdit.name.split(' ');
+    const editableUser = {
+      ...userToEdit,
+      firstName: firstName || '',
+      lastName: lastName || ''
+    };
+    setSelectedUser(editableUser);
     setEditDialogOpen(true);
     handleMenuClose();
   };
@@ -120,8 +128,8 @@ const UserList = () => {
     setSelectedUser(userToDelete);
     setConfirmDialog({
       open: true,
-      title: 'Удаление пользователя',
-      message: 'Пользователь будет удален безвозвратно. Все связанные с ним данные также будут удалены.',
+      title: 'Деактивация пользователя',
+      message: 'Пользователь будет деактивирован и не сможет войти в систему. Все связанные с ним данные сохранятся.',
       itemName: userToDelete.name,
       itemType: 'пользователя',
       onConfirm: () => confirmDeleteUser(userId)
@@ -132,7 +140,11 @@ const UserList = () => {
   const confirmDeleteUser = async (userId) => {
     try {
       await axios.delete(`/api/users/${userId}`);
-      setUsers(users.filter(u => u.id !== userId));
+      // После мягкого удаления пользователь становится неактивным
+      // Обновляем его статус в локальном состоянии
+      setUsers(users.map(u =>
+        u.id === userId ? { ...u, status: 'inactive' } : u
+      ));
       setConfirmDialog({ ...confirmDialog, open: false });
     } catch (err) {
       console.error('Error deleting user:', err);
@@ -164,17 +176,24 @@ const UserList = () => {
 
   const handleSaveUser = async () => {
     try {
-      const [firstName, lastName] = selectedUser.name.split(' ');
-      
       await axios.put(`/api/users/${selectedUser.id}`, {
-        firstName: firstName || '',
-        lastName: lastName || '',
+        firstName: selectedUser.firstName || '',
+        lastName: selectedUser.lastName || '',
         role: selectedUser.role,
-        isActive: selectedUser.status === 'active'
+        isActive: selectedUser.status === 'active',
+        telegramId: selectedUser.telegramId || null,
+        department: selectedUser.department || null,
+        company: selectedUser.company || null
       });
       
+      // Обновляем пользователя в списке с правильным именем
+      const updatedUser = {
+        ...selectedUser,
+        name: `${selectedUser.firstName} ${selectedUser.lastName}`
+      };
+      
       setUsers(users.map(u =>
-        u.id === selectedUser.id ? selectedUser : u
+        u.id === selectedUser.id ? updatedUser : u
       ));
       setEditDialogOpen(false);
       setSelectedUser(null);
@@ -283,6 +302,16 @@ const UserList = () => {
       field: 'phone',
       headerName: 'Телефон',
       width: 150,
+    },
+    {
+      field: 'telegramId',
+      headerName: 'Telegram ID',
+      width: 150,
+      renderCell: (params) => (
+        <Typography variant="body2" color={params.value === 'Не указан' ? 'text.secondary' : 'text.primary'}>
+          {params.value}
+        </Typography>
+      ),
     },
     {
       field: 'ticketsCount',
@@ -427,12 +456,12 @@ const UserList = () => {
           )}
         </MenuItemComponent>
         <Divider />
-        <MenuItemComponent 
+        <MenuItemComponent
           onClick={() => handleDeleteUser(menuUserId)}
           sx={{ color: 'error.main' }}
         >
-          <Delete sx={{ mr: 1 }} />
-          Удалить
+          <Block sx={{ mr: 1 }} />
+          Деактивировать
         </MenuItemComponent>
       </Menu>
 
@@ -445,8 +474,16 @@ const UserList = () => {
               <TextField
                 fullWidth
                 label="Имя"
-                value={selectedUser.name || ''}
-                onChange={(e) => setSelectedUser({ ...selectedUser, name: e.target.value })}
+                value={selectedUser.firstName || ''}
+                onChange={(e) => setSelectedUser({ ...selectedUser, firstName: e.target.value })}
+                sx={{ mb: 2 }}
+              />
+              
+              <TextField
+                fullWidth
+                label="Фамилия"
+                value={selectedUser.lastName || ''}
+                onChange={(e) => setSelectedUser({ ...selectedUser, lastName: e.target.value })}
                 sx={{ mb: 2 }}
               />
               
@@ -464,6 +501,31 @@ const UserList = () => {
                 label="Телефон"
                 value={selectedUser.phone || ''}
                 onChange={(e) => setSelectedUser({ ...selectedUser, phone: e.target.value })}
+                sx={{ mb: 2 }}
+              />
+              
+              <TextField
+                fullWidth
+                label="Telegram ID"
+                value={selectedUser.telegramId || ''}
+                onChange={(e) => setSelectedUser({ ...selectedUser, telegramId: e.target.value })}
+                placeholder="@username или username"
+                sx={{ mb: 2 }}
+              />
+              
+              <TextField
+                fullWidth
+                label="Отдел"
+                value={selectedUser.department || ''}
+                onChange={(e) => setSelectedUser({ ...selectedUser, department: e.target.value })}
+                sx={{ mb: 2 }}
+              />
+              
+              <TextField
+                fullWidth
+                label="Компания"
+                value={selectedUser.company || ''}
+                onChange={(e) => setSelectedUser({ ...selectedUser, company: e.target.value })}
                 sx={{ mb: 2 }}
               />
               
@@ -513,7 +575,7 @@ const UserList = () => {
         message={confirmDialog.message}
         itemName={confirmDialog.itemName}
         itemType={confirmDialog.itemType}
-        confirmText="Удалить"
+        confirmText="Деактивировать"
         cancelText="Отмена"
         severity="error"
         confirmColor="error"

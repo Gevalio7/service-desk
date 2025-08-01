@@ -54,10 +54,13 @@ exports.handleCallbackQuery = async (ctx) => {
  */
 async function handleCategorySelection(ctx, category) {
   try {
-    // Update ticket data
+    // Update ticket data with correct category
     ctx.session = ctx.session || {};
     ctx.session.ticketData = ctx.session.ticketData || {};
+    
+    // Use the category directly as it matches database enum
     ctx.session.ticketData.category = category;
+    ctx.session.ticketData.type = 'incident'; // Default type
     
     // Answer callback query
     await ctx.answerCbQuery(`Выбрана категория: ${translateCategory(category)}`);
@@ -67,12 +70,12 @@ async function handleCategorySelection(ctx, category) {
       `Выбрана категория: ${translateCategory(category)}\n\nВыберите приоритет заявки:`,
       Markup.inlineKeyboard([
         [
-          Markup.button.callback('🔴 Критический (P1)', 'priority:P1'),
-          Markup.button.callback('🟠 Высокий (P2)', 'priority:P2')
+          Markup.button.callback('🔴 Критический', 'priority:urgent'),
+          Markup.button.callback('🟠 Высокий', 'priority:high')
         ],
         [
-          Markup.button.callback('🟡 Средний (P3)', 'priority:P3'),
-          Markup.button.callback('🟢 Низкий (P4)', 'priority:P4')
+          Markup.button.callback('🟡 Средний', 'priority:medium'),
+          Markup.button.callback('🟢 Низкий', 'priority:low')
         ]
       ])
     );
@@ -95,13 +98,25 @@ async function handlePrioritySelection(ctx, priority) {
     // Answer callback query
     await ctx.answerCbQuery(`Выбран приоритет: ${translatePriority(priority)}`);
     
-    // Ask for ticket title
-    await ctx.editMessageText(
-      `Выбрана категория: ${translateCategory(ctx.session.ticketData.category)}\n` +
-      `Выбран приоритет: ${translatePriority(priority)}\n\n` +
-      'Пожалуйста, введите тему заявки:',
-      Markup.removeKeyboard()
-    );
+    // Ask for ticket title or description based on current data
+    if (ctx.session.ticketData.title) {
+      // Title already exists, ask for description
+      await ctx.editMessageText(
+        `Выбрана категория: ${translateCategory(ctx.session.ticketData.category)}\n` +
+        `Выбран приоритет: ${translatePriority(priority)}\n\n` +
+        `Тема: ${ctx.session.ticketData.title}\n\n` +
+        'Пожалуйста, введите описание заявки:'
+      );
+      ctx.session.state = 'awaiting_description';
+    } else {
+      // No title yet, ask for title
+      await ctx.editMessageText(
+        `Выбрана категория: ${translateCategory(ctx.session.ticketData.category)}\n` +
+        `Выбран приоритет: ${translatePriority(priority)}\n\n` +
+        'Пожалуйста, введите тему заявки:'
+      );
+      ctx.session.state = 'awaiting_title';
+    }
     
     // Update state
     ctx.session.state = 'awaiting_title';
@@ -221,16 +236,32 @@ async function handleCommentStart(ctx, ticketId) {
  */
 function translateCategory(category) {
   switch (category) {
-    case 'incident':
-      return 'Инцидент';
-    case 'request':
-      return 'Запрос';
-    case 'problem':
-      return 'Проблема';
-    case 'change':
-      return 'Изменение';
+    case 'technical':
+      return 'Техническая';
+    case 'billing':
+      return 'Биллинг';
+    case 'general':
+      return 'Общая';
+    case 'feature_request':
+      return 'Новая функция';
     default:
       return category;
+  }
+}
+
+/**
+ * Translate type to Russian
+ */
+function translateType(type) {
+  switch (type) {
+    case 'incident':
+      return 'Инцидент';
+    case 'service_request':
+      return 'Запрос на обслуживание';
+    case 'change_request':
+      return 'Запрос на изменение';
+    default:
+      return type;
   }
 }
 
@@ -239,13 +270,13 @@ function translateCategory(category) {
  */
 function translatePriority(priority) {
   switch (priority) {
-    case 'P1':
+    case 'urgent':
       return 'Критический';
-    case 'P2':
+    case 'high':
       return 'Высокий';
-    case 'P3':
+    case 'medium':
       return 'Средний';
-    case 'P4':
+    case 'low':
       return 'Низкий';
     default:
       return priority;

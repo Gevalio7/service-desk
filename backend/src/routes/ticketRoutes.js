@@ -56,8 +56,8 @@ router.post(
   [
     body('title').notEmpty().withMessage('Title is required'),
     body('description').notEmpty().withMessage('Description is required'),
-    body('category').optional().isIn(['incident', 'request', 'problem', 'change']),
-    body('priority').optional().isIn(['P1', 'P2', 'P3', 'P4']),
+    body('category').optional().isIn(['technical', 'billing', 'general', 'feature_request']),
+    body('priority').optional().isIn(['low', 'medium', 'high', 'urgent']),
     body('tags').optional().isArray(),
     body('source').optional().isIn(['web', 'email', 'telegram', 'phone']),
     body('telegramMessageId').optional()
@@ -164,8 +164,8 @@ router.put(
     body('title').optional(),
     body('description').optional(),
     body('status').optional().isIn(['new', 'assigned', 'in_progress', 'on_hold', 'resolved', 'closed']),
-    body('priority').optional().isIn(['P1', 'P2', 'P3', 'P4']),
-    body('category').optional().isIn(['incident', 'request', 'problem', 'change']),
+    body('priority').optional().isIn(['low', 'medium', 'high', 'urgent']),
+    body('category').optional().isIn(['technical', 'billing', 'general', 'feature_request']),
     body('assignedToId').optional(),
     body('tags').optional().isArray()
   ],

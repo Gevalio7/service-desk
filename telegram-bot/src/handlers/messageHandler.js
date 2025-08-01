@@ -352,7 +352,7 @@ async function handleTicketDescription(ctx, description) {
     let message = 'Подтвердите создание заявки:\n\n';
     message += `<b>Тема:</b> ${ticketData.title}\n`;
     message += `<b>Описание:</b> ${ticketData.description}\n`;
-    message += `<b>Категория:</b> ${translateCategory(ticketData.category)}\n`;
+    message += `<b>Категория:</b> ${translateType(ticketData.type)}\n`;
     message += `<b>Приоритет:</b> ${translatePriority(ticketData.priority)}\n`;
     
     if (ticketData.attachments && ticketData.attachments.length > 0) {
@@ -518,17 +518,33 @@ function translateCategory(category) {
 }
 
 /**
+ * Translate type to Russian
+ */
+function translateType(type) {
+  switch (type) {
+    case 'incident':
+      return 'Инцидент';
+    case 'service_request':
+      return 'Запрос на обслуживание';
+    case 'change_request':
+      return 'Запрос на изменение';
+    default:
+      return type;
+  }
+}
+
+/**
  * Translate priority to Russian
  */
 function translatePriority(priority) {
   switch (priority) {
-    case 'P1':
+    case 'urgent':
       return 'Критический';
-    case 'P2':
+    case 'high':
       return 'Высокий';
-    case 'P3':
+    case 'medium':
       return 'Средний';
-    case 'P4':
+    case 'low':
       return 'Низкий';
     default:
       return priority;

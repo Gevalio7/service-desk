@@ -32,9 +32,12 @@ exports.getUsers = async (req, res) => {
       where.role = role;
     }
     
-    // Filter by active status
+    // Filter by active status - по умолчанию показываем только активных пользователей
     if (isActive !== undefined) {
       where.isActive = isActive === 'true';
+    } else {
+      // По умолчанию показываем только активных пользователей
+      where.isActive = true;
     }
     
     // Filter by search term (username, email, firstName, lastName)
@@ -161,16 +164,31 @@ exports.createUser = async (req, res) => {
     } = req.body;
     
     // Check if user already exists
-    const existingUser = await User.findOne({ 
-      where: { 
-        [Op.or]: [{ email }, { username }] 
-      } 
+    const existingUser = await User.findOne({
+      where: {
+        [Op.or]: [{ email }, { username }]
+      }
     });
     
     if (existingUser) {
-      return res.status(400).json({ 
-        message: 'User with this email or username already exists' 
+      return res.status(400).json({
+        message: 'User with this email or username already exists'
       });
+    }
+
+    // Check if telegramId is unique (if provided)
+    if (telegramId) {
+      const existingTelegramUser = await User.findOne({
+        where: {
+          telegramId
+        }
+      });
+      
+      if (existingTelegramUser) {
+        return res.status(400).json({
+          message: 'Этот Telegram ID уже используется другим пользователем'
+        });
+      }
     }
     
     // Create new user
@@ -211,47 +229,97 @@ exports.createUser = async (req, res) => {
 exports.updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { 
-      firstName, 
-      lastName, 
-      role, 
-      department, 
+    const {
+      firstName,
+      lastName,
+      role,
+      department,
       company,
       telegramId,
       isActive
     } = req.body;
     
+    logger.info('🔄 User update attempt', {
+      targetUserId: id,
+      updatedBy: req.user?.id,
+      fields: Object.keys(req.body),
+      ip: req.ip
+    });
+    
     // Get user
     const user = await User.findByPk(id);
     
     if (!user) {
+      logger.warn('❌ User not found in updateUser', {
+        targetUserId: id,
+        updatedBy: req.user?.id,
+        ip: req.ip
+      });
       return res.status(404).json({ message: 'User not found' });
     }
     
     // Role-based access control
     if (req.user.role !== 'admin' && req.user.id !== id) {
+      logger.warn('❌ Access denied in updateUser', {
+        targetUserId: id,
+        updatedBy: req.user?.id,
+        userRole: req.user?.role,
+        ip: req.ip
+      });
       return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    // Validate required fields if provided
+    if (firstName !== undefined && (!firstName || firstName.trim().length === 0)) {
+      return res.status(400).json({ message: 'Имя не может быть пустым' });
+    }
+    
+    if (lastName !== undefined && (!lastName || lastName.trim().length === 0)) {
+      return res.status(400).json({ message: 'Фамилия не может быть пустой' });
+    }
+
+    // Check if telegramId is unique (if provided and different from current)
+    if (telegramId && telegramId !== user.telegramId) {
+      const existingUser = await User.findOne({
+        where: {
+          telegramId,
+          id: { [Op.ne]: user.id } // Exclude current user
+        }
+      });
+      
+      if (existingUser) {
+        return res.status(400).json({
+          message: 'Этот Telegram ID уже используется другим пользователем'
+        });
+      }
     }
     
     // Users can update their own profile, but not role or active status
     if (req.user.role !== 'admin') {
-      if (firstName) user.firstName = firstName;
-      if (lastName) user.lastName = lastName;
-      if (department) user.department = department;
-      if (company) user.company = company;
-      if (telegramId) user.telegramId = telegramId;
+      if (firstName !== undefined) user.firstName = firstName.trim();
+      if (lastName !== undefined) user.lastName = lastName.trim();
+      if (department !== undefined) user.department = department ? department.trim() : null;
+      if (company !== undefined) user.company = company ? company.trim() : null;
+      if (telegramId !== undefined) user.telegramId = telegramId ? telegramId.trim() : null;
     } else {
       // Admins can update all fields
-      if (firstName) user.firstName = firstName;
-      if (lastName) user.lastName = lastName;
-      if (role) user.role = role;
-      if (department) user.department = department;
-      if (company) user.company = company;
-      if (telegramId) user.telegramId = telegramId;
+      if (firstName !== undefined) user.firstName = firstName.trim();
+      if (lastName !== undefined) user.lastName = lastName.trim();
+      if (role !== undefined) user.role = role;
+      if (department !== undefined) user.department = department ? department.trim() : null;
+      if (company !== undefined) user.company = company ? company.trim() : null;
+      if (telegramId !== undefined) user.telegramId = telegramId ? telegramId.trim() : null;
       if (isActive !== undefined) user.isActive = isActive;
     }
     
     await user.save();
+    
+    logger.info('✅ User updated successfully', {
+      targetUserId: id,
+      updatedBy: req.user?.id,
+      updatedFields: Object.keys(req.body),
+      ip: req.ip
+    });
     
     // Return user data without password
     const userData = user.toJSON();
@@ -262,8 +330,14 @@ exports.updateUser = async (req, res) => {
       user: userData
     });
   } catch (error) {
-    logger.error('Error in updateUser controller:', error);
-    res.status(500).json({ 
+    logger.error('💥 Error in updateUser controller:', {
+      error: error.message,
+      stack: error.stack,
+      targetUserId: req.params?.id,
+      updatedBy: req.user?.id,
+      ip: req.ip
+    });
+    res.status(500).json({
       message: 'Error updating user',
       error: process.env.NODE_ENV === 'production' ? {} : error.message
     });
@@ -407,6 +481,41 @@ exports.getUserActivity = async (req, res) => {
     logger.error('Error in getUserActivity controller:', error);
     res.status(500).json({
       message: 'Error getting user activity',
+      error: process.env.NODE_ENV === 'production' ? {} : error.message
+    });
+  }
+};
+
+/**
+ * Get user by Telegram ID
+ * Used by Telegram bot for authentication
+ */
+exports.getUserByTelegramId = async (req, res) => {
+  try {
+    const { telegramId } = req.params;
+    
+    // Get user by Telegram ID
+    const user = await User.findOne({
+      where: { telegramId },
+      attributes: { exclude: ['password'] }
+    });
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Check if user is active
+    if (!user.isActive) {
+      return res.status(403).json({ message: 'User account is inactive' });
+    }
+    
+    res.status(200).json({
+      user
+    });
+  } catch (error) {
+    logger.error('Error in getUserByTelegramId controller:', error);
+    res.status(500).json({
+      message: 'Error getting user by Telegram ID',
       error: process.env.NODE_ENV === 'production' ? {} : error.message
     });
   }
