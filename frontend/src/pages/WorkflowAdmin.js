@@ -587,12 +587,157 @@ const WorkflowAdmin = () => {
           {activeTab === 1 && (
             <Card>
               <CardContent>
-                <Typography variant="h6" mb={3}>
-                  Переходы между статусами
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Функциональность переходов будет реализована в следующем этапе
-                </Typography>
+                <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+                  <Typography variant="h6">
+                    Переходы для "{selectedWorkflowType.displayName?.ru || selectedWorkflowType.name}"
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<Add />}
+                    onClick={() => setCreateTransitionDialogOpen(true)}
+                    disabled={statuses.length < 2}
+                  >
+                    Добавить переход
+                  </Button>
+                </Box>
+
+                {statuses.length < 2 && (
+                  <Alert severity="warning" sx={{ mb: 3 }}>
+                    Для создания переходов необходимо минимум 2 статуса.
+                    Сначала создайте статусы на вкладке "Статусы".
+                  </Alert>
+                )}
+
+                <List>
+                  {transitions.map((transition, index) => (
+                    <React.Fragment key={transition.id}>
+                      <ListItem>
+                        <Box display="flex" alignItems="center" mr={2}>
+                          <Box
+                            sx={{
+                              width: 16,
+                              height: 16,
+                              borderRadius: '50%',
+                              backgroundColor: transition.color || '#007bff',
+                              mr: 1
+                            }}
+                          />
+                          <Typography variant="body1" fontWeight="medium">
+                            {transition.displayName?.ru || transition.name}
+                          </Typography>
+                        </Box>
+                        <ListItemText
+                          secondary={
+                            <Box>
+                              <Typography variant="body2" color="text.secondary" mb={1}>
+                                {transition.description?.ru || 'Без описания'}
+                              </Typography>
+                              <Box display="flex" alignItems="center" gap={1} mb={1}>
+                                {transition.fromStatus ? (
+                                  <Chip
+                                    size="small"
+                                    label={transition.fromStatus.displayName?.ru || transition.fromStatus.name}
+                                    sx={{
+                                      backgroundColor: transition.fromStatus.color,
+                                      color: 'white'
+                                    }}
+                                  />
+                                ) : (
+                                  <Chip size="small" label="Любой статус" variant="outlined" />
+                                )}
+                                <ArrowForward fontSize="small" color="action" />
+                                <Chip
+                                  size="small"
+                                  label={transition.toStatus?.displayName?.ru || transition.toStatus?.name || 'Неизвестно'}
+                                  sx={{
+                                    backgroundColor: transition.toStatus?.color || '#6c757d',
+                                    color: 'white'
+                                  }}
+                                />
+                              </Box>
+                              <Box>
+                                {transition.isAutomatic && (
+                                  <Chip size="small" label="Автоматический" color="info" sx={{ mr: 1 }} />
+                                )}
+                                {transition.requiresComment && (
+                                  <Chip size="small" label="Требует комментарий" color="warning" sx={{ mr: 1 }} />
+                                )}
+                                {transition.requiresAssignment && (
+                                  <Chip size="small" label="Требует назначение" color="secondary" sx={{ mr: 1 }} />
+                                )}
+                                {transition.allowedRoles && transition.allowedRoles.length > 0 && (
+                                  <Chip
+                                    size="small"
+                                    label={`Роли: ${transition.allowedRoles.join(', ')}`}
+                                    variant="outlined"
+                                  />
+                                )}
+                              </Box>
+                            </Box>
+                          }
+                        />
+                        <ListItemSecondaryAction>
+                          <Tooltip title="Настроить условия">
+                            <IconButton
+                              edge="end"
+                              onClick={() => {
+                                setSelectedTransition(transition);
+                                setConditionsDialogOpen(true);
+                              }}
+                            >
+                              <Code />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Настроить действия">
+                            <IconButton
+                              edge="end"
+                              onClick={() => {
+                                setSelectedTransition(transition);
+                                setActionsDialogOpen(true);
+                              }}
+                            >
+                              <Settings />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Редактировать">
+                            <IconButton edge="end" onClick={() => {
+                              setTransitionForm({
+                                ...transition,
+                                allowedRoles: transition.allowedRoles || []
+                              });
+                              setEditTransitionDialogOpen(true);
+                            }}>
+                              <Edit />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Удалить">
+                            <IconButton edge="end" color="error">
+                              <Delete />
+                            </IconButton>
+                          </Tooltip>
+                        </ListItemSecondaryAction>
+                      </ListItem>
+                      {index < transitions.length - 1 && <Divider />}
+                    </React.Fragment>
+                  ))}
+                </List>
+
+                {transitions.length === 0 && (
+                  <Box textAlign="center" py={4}>
+                    <Typography variant="body1" color="text.secondary" mb={2}>
+                      Переходы не найдены. Создайте первый переход для начала работы.
+                    </Typography>
+                    {statuses.length >= 2 && (
+                      <Button
+                        variant="outlined"
+                        startIcon={<Add />}
+                        onClick={() => setCreateTransitionDialogOpen(true)}
+                      >
+                        Создать переход
+                      </Button>
+                    )}
+                  </Box>
+                )}
               </CardContent>
             </Card>
           )}
@@ -899,6 +1044,227 @@ const WorkflowAdmin = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Create Transition Dialog */}
+      <Dialog open={createTransitionDialogOpen} onClose={() => setCreateTransitionDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Создать новый переход</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={3} sx={{ mt: 1 }}>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Системное имя"
+                value={transitionForm.name}
+                onChange={(e) => setTransitionForm(prev => ({ ...prev, name: e.target.value }))}
+                helperText="Только латинские буквы и цифры"
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Иконка"
+                value={transitionForm.icon}
+                onChange={(e) => setTransitionForm(prev => ({ ...prev, icon: e.target.value }))}
+                placeholder="arrow-right"
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Название (Русский)"
+                value={transitionForm.displayName.ru}
+                onChange={(e) => setTransitionForm(prev => ({
+                  ...prev,
+                  displayName: { ...prev.displayName, ru: e.target.value }
+                }))}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Название (English)"
+                value={transitionForm.displayName.en}
+                onChange={(e) => setTransitionForm(prev => ({
+                  ...prev,
+                  displayName: { ...prev.displayName, en: e.target.value }
+                }))}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel>Из статуса</InputLabel>
+                <Select
+                  value={transitionForm.fromStatusId}
+                  onChange={(e) => setTransitionForm(prev => ({ ...prev, fromStatusId: e.target.value }))}
+                  label="Из статуса"
+                >
+                  <MenuItem value="">Любой статус</MenuItem>
+                  {statuses.map((status) => (
+                    <MenuItem key={status.id} value={status.id}>
+                      {status.displayName?.ru || status.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth required>
+                <InputLabel>В статус</InputLabel>
+                <Select
+                  value={transitionForm.toStatusId}
+                  onChange={(e) => setTransitionForm(prev => ({ ...prev, toStatusId: e.target.value }))}
+                  label="В статус"
+                >
+                  {statuses.map((status) => (
+                    <MenuItem key={status.id} value={status.id}>
+                      {status.displayName?.ru || status.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                type="color"
+                label="Цвет"
+                value={transitionForm.color}
+                onChange={(e) => setTransitionForm(prev => ({ ...prev, color: e.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                type="number"
+                label="Порядок сортировки"
+                value={transitionForm.sortOrder}
+                onChange={(e) => setTransitionForm(prev => ({
+                  ...prev,
+                  sortOrder: parseInt(e.target.value) || 0
+                }))}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                multiline
+                rows={3}
+                label="Описание (Русский)"
+                value={transitionForm.description.ru}
+                onChange={(e) => setTransitionForm(prev => ({
+                  ...prev,
+                  description: { ...prev.description, ru: e.target.value }
+                }))}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={transitionForm.isAutomatic}
+                    onChange={(e) => setTransitionForm(prev => ({ ...prev, isAutomatic: e.target.checked }))}
+                  />
+                }
+                label="Автоматический переход"
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={transitionForm.requiresComment}
+                    onChange={(e) => setTransitionForm(prev => ({ ...prev, requiresComment: e.target.checked }))}
+                  />
+                }
+                label="Требует комментарий"
+                sx={{ ml: 2 }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={transitionForm.requiresAssignment}
+                    onChange={(e) => setTransitionForm(prev => ({ ...prev, requiresAssignment: e.target.checked }))}
+                  />
+                }
+                label="Требует назначение исполнителя"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Разрешенные роли</InputLabel>
+                <Select
+                  multiple
+                  value={transitionForm.allowedRoles}
+                  onChange={(e) => setTransitionForm(prev => ({ ...prev, allowedRoles: e.target.value }))}
+                  label="Разрешенные роли"
+                  renderValue={(selected) => (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {selected.map((value) => (
+                        <Chip key={value} label={value} size="small" />
+                      ))}
+                    </Box>
+                  )}
+                >
+                  <MenuItem value="admin">Администратор</MenuItem>
+                  <MenuItem value="agent">Агент</MenuItem>
+                  <MenuItem value="client">Клиент</MenuItem>
+                  <MenuItem value="system">Система</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateTransitionDialogOpen(false)}>
+            Отмена
+          </Button>
+          <Button onClick={handleCreateTransition} variant="contained" disabled={loading}>
+            Создать
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Conditions Dialog */}
+      {conditionsDialogOpen && selectedTransition && (
+        <Dialog open={conditionsDialogOpen} onClose={() => setConditionsDialogOpen(false)} maxWidth="lg" fullWidth>
+          <DialogTitle>
+            Условия для перехода "{selectedTransition.displayName?.ru || selectedTransition.name}"
+          </DialogTitle>
+          <DialogContent>
+            <WorkflowConditionsEditor
+              transitionId={selectedTransition.id}
+              conditions={selectedTransition.WorkflowConditions || []}
+              onChange={handleConditionsChange}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setConditionsDialogOpen(false)}>
+              Закрыть
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
+      {/* Actions Dialog */}
+      {actionsDialogOpen && selectedTransition && (
+        <Dialog open={actionsDialogOpen} onClose={() => setActionsDialogOpen(false)} maxWidth="lg" fullWidth>
+          <DialogTitle>
+            Действия для перехода "{selectedTransition.displayName?.ru || selectedTransition.name}"
+          </DialogTitle>
+          <DialogContent>
+            <WorkflowActionsEditor
+              transitionId={selectedTransition.id}
+              actions={selectedTransition.WorkflowActions || []}
+              onChange={handleActionsChange}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setActionsDialogOpen(false)}>
+              Закрыть
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
     </Box>
   );
 };
