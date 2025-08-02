@@ -2139,7 +2139,7 @@ exports.getWorkflowHistory = async (req, res) => {
           required: false
         }
       ],
-      order: [['createdAt', 'DESC']],
+      order: [['executionTime', 'DESC']],
       limit: parseInt(limit),
       offset: offset
     });
@@ -2161,7 +2161,7 @@ exports.getWorkflowHistory = async (req, res) => {
         executionDuration: entry.executionDuration,
         success: entry.success,
         errorMessage: entry.errorMessage,
-        createdAt: entry.createdAt,
+        createdAt: entry.executionTime,
         ...(includeDetails === 'true' && {
           conditionsResult: entry.conditionsResult,
           actionsResult: entry.actionsResult,
