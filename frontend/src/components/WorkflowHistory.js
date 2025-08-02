@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from '../utils/axios';
+import './WorkflowHistory.css';
 
 const WorkflowHistory = ({ ticketId }) => {
   const [history, setHistory] = useState([]);

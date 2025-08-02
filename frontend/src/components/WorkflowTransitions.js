@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from '../utils/axios';
+import './WorkflowTransitions.css';
 
 const WorkflowTransitions = ({ ticketId, onTransitionExecuted, currentUser }) => {
   const [transitions, setTransitions] = useState([]);
