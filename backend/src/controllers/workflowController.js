@@ -296,6 +296,91 @@ exports.updateWorkflowStatus = async (req, res) => {
 };
 
 /**
+ * Удалить статус
+ */
+exports.deleteWorkflowStatus = async (req, res) => {
+  try {
+    const { statusId } = req.params;
+    const status = await WorkflowStatus.findByPk(statusId);
+
+    if (!status) {
+      return res.status(404).json({ message: 'Workflow status not found' });
+    }
+
+    // Проверяем, используется ли статус в тикетах
+    const { Ticket } = require('../models');
+    const ticketsCount = await Ticket.count({
+      where: { currentStatusId: statusId }
+    });
+
+    if (ticketsCount > 0) {
+      return res.status(400).json({
+        message: 'Cannot delete status that is currently used by tickets',
+        details: `This status is used by ${ticketsCount} ticket(s). Please move these tickets to another status first.`,
+        ticketsCount
+      });
+    }
+
+    // Проверяем, используется ли статус в переходах
+    const transitionsCount = await WorkflowTransition.count({
+      where: {
+        [Op.or]: [
+          { fromStatusId: statusId },
+          { toStatusId: statusId }
+        ]
+      }
+    });
+
+    if (transitionsCount > 0) {
+      return res.status(400).json({
+        message: 'Cannot delete status that is used in workflow transitions',
+        details: `This status is used in ${transitionsCount} transition(s). Please remove these transitions first.`,
+        transitionsCount
+      });
+    }
+
+    // Проверяем, не является ли статус системным
+    if (status.isSystem) {
+      return res.status(400).json({
+        message: 'Cannot delete system status',
+        details: 'System statuses cannot be deleted as they are required for workflow functionality.'
+      });
+    }
+
+    // Проверяем, не является ли статус начальным или финальным для workflow
+    if (status.isInitial || status.isFinal) {
+      const workflowType = await WorkflowType.findByPk(status.workflowTypeId);
+      const statusesCount = await WorkflowStatus.count({
+        where: {
+          workflowTypeId: status.workflowTypeId,
+          isActive: true,
+          [status.isInitial ? 'isInitial' : 'isFinal']: true
+        }
+      });
+
+      if (statusesCount <= 1) {
+        return res.status(400).json({
+          message: `Cannot delete the only ${status.isInitial ? 'initial' : 'final'} status`,
+          details: `Workflow "${workflowType?.displayName?.ru || workflowType?.name}" must have at least one ${status.isInitial ? 'initial' : 'final'} status.`
+        });
+      }
+    }
+
+    await status.destroy();
+
+    res.status(200).json({
+      message: 'Workflow status deleted successfully'
+    });
+  } catch (error) {
+    logger.error('Error deleting workflow status:', error);
+    res.status(500).json({
+      message: 'Error deleting workflow status',
+      error: process.env.NODE_ENV === 'production' ? {} : error.message
+    });
+  }
+};
+
+/**
  * Получить переходы для типа workflow
  */
 exports.getWorkflowTransitions = async (req, res) => {

@@ -307,6 +307,70 @@ const WorkflowAdmin = () => {
     }
   };
 
+  const handleEditStatus = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.put(
+        `/api/workflow/statuses/${statusForm.id}`,
+        statusForm
+      );
+      
+      setStatuses(prev => prev.map(s =>
+        s.id === statusForm.id ? response.data.status : s
+      ));
+      setEditStatusDialogOpen(false);
+      setStatusForm({
+        name: '',
+        displayName: { ru: '', en: '' },
+        description: { ru: '', en: '' },
+        icon: 'circle',
+        color: '#6c757d',
+        category: 'active',
+        isInitial: false,
+        isFinal: false,
+        sortOrder: 0,
+        slaHours: null,
+        responseHours: null,
+        autoAssign: false,
+        notifyOnEnter: true,
+        notifyOnExit: false,
+        isActive: true
+      });
+      setSuccess('Статус успешно обновлен');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Ошибка обновления статуса');
+      console.error('Error updating status:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteStatus = async (statusId) => {
+    if (!window.confirm('Вы уверены, что хотите удалить этот статус? Это действие нельзя отменить.')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await axios.delete(`/api/workflow/statuses/${statusId}`);
+      
+      setStatuses(prev => prev.filter(s => s.id !== statusId));
+      setSuccess('Статус успешно удален');
+    } catch (err) {
+      const errorMessage = err.response?.data?.message || 'Ошибка удаления статуса';
+      const errorDetails = err.response?.data?.details;
+      
+      if (errorDetails) {
+        setError(`${errorMessage}\n\n${errorDetails}`);
+      } else {
+        setError(errorMessage);
+      }
+      console.error('Error deleting status:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleExportWorkflow = async () => {
     try {
       const response = await axios.get(
@@ -561,7 +625,11 @@ const WorkflowAdmin = () => {
                             </IconButton>
                           </Tooltip>
                           <Tooltip title="Удалить">
-                            <IconButton edge="end" color="error">
+                            <IconButton
+                              edge="end"
+                              color="error"
+                              onClick={() => handleDeleteStatus(status.id)}
+                            >
                               <Delete />
                             </IconButton>
                           </Tooltip>
@@ -1041,6 +1109,164 @@ const WorkflowAdmin = () => {
           </Button>
           <Button onClick={handleCreateStatus} variant="contained" disabled={loading}>
             Создать
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Status Dialog */}
+      <Dialog open={editStatusDialogOpen} onClose={() => setEditStatusDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Редактировать статус</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={3} sx={{ mt: 1 }}>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Системное имя"
+                value={statusForm.name}
+                onChange={(e) => setStatusForm(prev => ({ ...prev, name: e.target.value }))}
+                helperText="Только латинские буквы и цифры"
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel>Категория</InputLabel>
+                <Select
+                  value={statusForm.category}
+                  onChange={(e) => setStatusForm(prev => ({ ...prev, category: e.target.value }))}
+                  label="Категория"
+                >
+                  <MenuItem value="open">Открыт</MenuItem>
+                  <MenuItem value="active">Активен</MenuItem>
+                  <MenuItem value="pending">Ожидание</MenuItem>
+                  <MenuItem value="resolved">Решен</MenuItem>
+                  <MenuItem value="closed">Закрыт</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Название (Русский)"
+                value={statusForm.displayName.ru}
+                onChange={(e) => setStatusForm(prev => ({
+                  ...prev,
+                  displayName: { ...prev.displayName, ru: e.target.value }
+                }))}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Название (English)"
+                value={statusForm.displayName.en}
+                onChange={(e) => setStatusForm(prev => ({
+                  ...prev,
+                  displayName: { ...prev.displayName, en: e.target.value }
+                }))}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Иконка"
+                value={statusForm.icon}
+                onChange={(e) => setStatusForm(prev => ({ ...prev, icon: e.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                type="color"
+                label="Цвет"
+                value={statusForm.color}
+                onChange={(e) => setStatusForm(prev => ({ ...prev, color: e.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                type="number"
+                label="SLA (часы)"
+                value={statusForm.slaHours || ''}
+                onChange={(e) => setStatusForm(prev => ({
+                  ...prev,
+                  slaHours: e.target.value ? parseInt(e.target.value) : null
+                }))}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                type="number"
+                label="Время ответа (часы)"
+                value={statusForm.responseHours || ''}
+                onChange={(e) => setStatusForm(prev => ({
+                  ...prev,
+                  responseHours: e.target.value ? parseInt(e.target.value) : null
+                }))}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={statusForm.isInitial}
+                    onChange={(e) => setStatusForm(prev => ({ ...prev, isInitial: e.target.checked }))}
+                  />
+                }
+                label="Начальный статус"
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={statusForm.isFinal}
+                    onChange={(e) => setStatusForm(prev => ({ ...prev, isFinal: e.target.checked }))}
+                  />
+                }
+                label="Финальный статус"
+                sx={{ ml: 2 }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={statusForm.notifyOnEnter}
+                    onChange={(e) => setStatusForm(prev => ({ ...prev, notifyOnEnter: e.target.checked }))}
+                  />
+                }
+                label="Уведомлять при входе"
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={statusForm.notifyOnExit}
+                    onChange={(e) => setStatusForm(prev => ({ ...prev, notifyOnExit: e.target.checked }))}
+                  />
+                }
+                label="Уведомлять при выходе"
+                sx={{ ml: 2 }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={statusForm.isActive}
+                    onChange={(e) => setStatusForm(prev => ({ ...prev, isActive: e.target.checked }))}
+                  />
+                }
+                label="Активен"
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditStatusDialogOpen(false)}>
+            Отмена
+          </Button>
+          <Button onClick={handleEditStatus} variant="contained" disabled={loading}>
+            Сохранить
           </Button>
         </DialogActions>
       </Dialog>

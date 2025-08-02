@@ -182,6 +182,21 @@ router.put(
   workflowController.updateWorkflowStatus
 );
 
+/**
+ * @route DELETE /api/workflow/statuses/:statusId
+ * @desc Delete workflow status
+ * @access Private (Admin only)
+ */
+router.delete(
+  '/statuses/:statusId',
+  authenticate,
+  isAdmin,
+  [
+    param('statusId').isUUID().withMessage('Invalid status ID')
+  ],
+  workflowController.deleteWorkflowStatus
+);
+
 // ========================================
 // WORKFLOW TRANSITIONS ROUTES
 // ========================================
