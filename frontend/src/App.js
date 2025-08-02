@@ -24,6 +24,7 @@ import NotFound from './pages/NotFound';
 import Settings from './pages/Settings';
 import Reports from './pages/Reports';
 import Notifications from './pages/Notifications';
+import WorkflowAdmin from './pages/WorkflowAdmin';
 
 // Theme configuration
 const lightTheme = createTheme({
@@ -269,6 +270,14 @@ function App() {
               <ProtectedRoute>
                 <DashboardLayout darkMode={darkMode} toggleTheme={toggleTheme}>
                   <Notifications />
+                </DashboardLayout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/workflow-admin" element={
+              <ProtectedRoute requiredRoles={['admin']}>
+                <DashboardLayout darkMode={darkMode} toggleTheme={toggleTheme}>
+                  <WorkflowAdmin />
                 </DashboardLayout>
               </ProtectedRoute>
             } />

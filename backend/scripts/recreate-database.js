@@ -9,7 +9,14 @@ const {
   Attachment,
   TicketHistory,
   Notification,
-  TicketContact
+  TicketContact,
+  WorkflowType,
+  WorkflowStatus,
+  WorkflowTransition,
+  WorkflowCondition,
+  WorkflowAction,
+  WorkflowVersion,
+  WorkflowExecutionLog
 } = require('../src/models');
 
 async function recreateDatabase() {
@@ -28,8 +35,15 @@ async function recreateDatabase() {
 
     // Удаляем все таблицы в правильном порядке (с учетом зависимостей)
     const tablesToDrop = [
+      'workflow_execution_log',
+      'workflow_actions',
+      'workflow_conditions',
+      'workflow_transitions',
+      'workflow_statuses',
+      'workflow_versions',
+      'workflow_types',
       'ticket_histories',
-      'ticket_contacts', 
+      'ticket_contacts',
       'Attachments',
       'Comments',
       'Notifications',
@@ -50,13 +64,14 @@ async function recreateDatabase() {
     const enumsToDelete = [
       'enum_Users_role',
       'enum_Tickets_category',
-      'enum_Tickets_type', 
+      'enum_Tickets_type',
       'enum_Tickets_priority',
       'enum_Tickets_status',
       'enum_Tickets_source',
       'enum_TicketHistories_action',
       'enum_Notifications_type',
-      'ticket_contact_role'
+      'ticket_contact_role',
+      'enum_WorkflowStatuses_category'
     ];
 
     for (const enumName of enumsToDelete) {
@@ -66,6 +81,28 @@ async function recreateDatabase() {
       } catch (error) {
         // Игнорируем ошибки удаления ENUM типов
       }
+    }
+
+    // Удаляем все индексы
+    console.log('\n🗑️ Удаление всех индексов...');
+    try {
+      const [indexes] = await sequelize.query(`
+        SELECT indexname FROM pg_indexes
+        WHERE schemaname = 'public'
+        AND indexname NOT LIKE 'pg_%'
+        AND indexname NOT LIKE '%_pkey'
+      `);
+      
+      for (const index of indexes) {
+        try {
+          await sequelize.query(`DROP INDEX IF EXISTS "${index.indexname}" CASCADE;`);
+          console.log(`  ✓ Удален индекс: ${index.indexname}`);
+        } catch (error) {
+          // Игнорируем ошибки удаления индексов
+        }
+      }
+    } catch (error) {
+      console.log('  ⚠️ Не удалось получить список индексов');
     }
 
     console.log('\n🏗️ Создание всех таблиц с правильной структурой...');

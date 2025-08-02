@@ -321,4 +321,53 @@ router.delete(
   ticketController.removeTicketContact
 );
 
+/**
+ * @route GET /api/tickets/:id/transitions/available
+ * @desc Get available workflow transitions for ticket
+ * @access Private
+ */
+router.get(
+  '/:id/transitions/available',
+  authenticate,
+  [
+    param('id').notEmpty().withMessage('Ticket ID is required').isUUID().withMessage('Ticket ID must be a valid UUID')
+  ],
+  ticketController.getAvailableTransitions
+);
+
+/**
+ * @route POST /api/tickets/:id/transitions/:transitionId/execute
+ * @desc Execute workflow transition
+ * @access Private
+ */
+router.post(
+  '/:id/transitions/:transitionId/execute',
+  authenticate,
+  [
+    param('id').notEmpty().withMessage('Ticket ID is required').isUUID().withMessage('Ticket ID must be a valid UUID'),
+    param('transitionId').notEmpty().withMessage('Transition ID is required').isUUID().withMessage('Transition ID must be a valid UUID'),
+    body('comment').optional().isString().withMessage('Comment must be a string'),
+    body('assigneeId').optional().isUUID().withMessage('Assignee ID must be a valid UUID'),
+    body('context').optional().isObject().withMessage('Context must be an object')
+  ],
+  ticketController.executeTransition
+);
+
+/**
+ * @route GET /api/tickets/:id/workflow/history
+ * @desc Get workflow execution history for ticket
+ * @access Private
+ */
+router.get(
+  '/:id/workflow/history',
+  authenticate,
+  [
+    param('id').notEmpty().withMessage('Ticket ID is required').isUUID().withMessage('Ticket ID must be a valid UUID'),
+    query('page').optional().isInt({ min: 1 }),
+    query('limit').optional().isInt({ min: 1, max: 100 }),
+    query('includeDetails').optional().isBoolean()
+  ],
+  ticketController.getWorkflowHistory
+);
+
 module.exports = router;

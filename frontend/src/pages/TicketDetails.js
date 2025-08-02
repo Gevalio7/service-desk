@@ -51,6 +51,8 @@ import { useAuth } from '../contexts/AuthContext';
 import axios from '../utils/axios';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ImagePreview, { ImageThumbnail } from '../components/ImagePreview';
+import WorkflowTransitions from '../components/WorkflowTransitions';
+import WorkflowHistory from '../components/WorkflowHistory';
 
 const TicketDetails = () => {
   const { id } = useParams();
@@ -1109,6 +1111,164 @@ const TicketDetails = () => {
                     )}
                   </Box>
                 )}
+              </Box>
+            </CardContent>
+          </Card>
+
+          {/* Workflow Transitions Card */}
+          <Card sx={{ mt: 2 }}>
+            <CardContent>
+              <Typography variant="h6" mb={2}>
+                <Box display="flex" alignItems="center">
+                  <Box
+                    component="i"
+                    className="bi bi-arrow-right-circle"
+                    sx={{ mr: 1, fontSize: 20 }}
+                  />
+                  Переходы статусов
+                </Box>
+              </Typography>
+              
+              <Box sx={{
+                '& .workflow-transitions': {
+                  '& .current-status': {
+                    mb: 2
+                  },
+                  '& .available-transitions h6': {
+                    fontSize: '1rem',
+                    fontWeight: 600,
+                    mb: 1.5
+                  },
+                  '& .transition-item': {
+                    mb: 1
+                  },
+                  '& .transition-item button': {
+                    textAlign: 'left',
+                    justifyContent: 'space-between',
+                    padding: '12px 16px',
+                    borderRadius: '8px',
+                    transition: 'all 0.2s ease-in-out'
+                  },
+                  '& .no-transitions': {
+                    textAlign: 'center',
+                    py: 2,
+                    color: 'text.secondary'
+                  },
+                  '& .workflow-info': {
+                    mt: 2,
+                    pt: 2,
+                    borderTop: '1px solid',
+                    borderColor: 'divider'
+                  }
+                }
+              }}>
+                <WorkflowTransitions
+                  ticketId={id}
+                  currentUser={user}
+                  onTransitionExecuted={(result) => {
+                    console.log('Переход выполнен:', result);
+                    // Обновляем данные тикета после успешного перехода
+                    fetchTicketDetails();
+                  }}
+                />
+              </Box>
+            </CardContent>
+          </Card>
+
+          {/* Workflow History Card */}
+          <Card sx={{ mt: 2 }}>
+            <CardContent>
+              <Typography variant="h6" mb={2}>
+                <Box display="flex" alignItems="center">
+                  <Box
+                    component="i"
+                    className="bi bi-clock-history"
+                    sx={{ mr: 1, fontSize: 20 }}
+                  />
+                  История переходов
+                </Box>
+              </Typography>
+              
+              <Box sx={{
+                '& .workflow-history': {
+                  '& .history-timeline': {
+                    '& .history-entry': {
+                      position: 'relative',
+                      '& .timeline-indicator': {
+                        position: 'relative',
+                        '& .timeline-dot': {
+                          position: 'relative',
+                          zIndex: 1
+                        },
+                        '& .timeline-line': {
+                          position: 'absolute',
+                          left: '50%',
+                          transform: 'translateX(-50%)'
+                        }
+                      },
+                      '& .status-transition': {
+                        display: 'flex',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: 1,
+                        mb: 1
+                      },
+                      '& .entry-meta': {
+                        fontSize: '0.875rem',
+                        color: 'text.secondary'
+                      },
+                      '& .details-content': {
+                        backgroundColor: 'grey.50',
+                        borderRadius: 1,
+                        p: 1.5,
+                        mt: 1,
+                        '& pre': {
+                          fontSize: '0.75rem',
+                          margin: 0,
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word'
+                        }
+                      }
+                    }
+                  },
+                  '& .pagination': {
+                    display: 'flex',
+                    justifyContent: 'center',
+                    '& ul': {
+                      display: 'flex',
+                      listStyle: 'none',
+                      padding: 0,
+                      margin: 0,
+                      gap: 0.5,
+                      '& li': {
+                        '& button': {
+                          minWidth: 32,
+                          height: 32,
+                          padding: '4px 8px',
+                          border: '1px solid',
+                          borderColor: 'divider',
+                          backgroundColor: 'background.paper',
+                          borderRadius: 1,
+                          cursor: 'pointer',
+                          '&:hover': {
+                            backgroundColor: 'action.hover'
+                          },
+                          '&:disabled': {
+                            cursor: 'not-allowed',
+                            opacity: 0.5
+                          }
+                        },
+                        '&.active button': {
+                          backgroundColor: 'primary.main',
+                          color: 'primary.contrastText',
+                          borderColor: 'primary.main'
+                        }
+                      }
+                    }
+                  }
+                }
+              }}>
+                <WorkflowHistory ticketId={id} />
               </Box>
             </CardContent>
           </Card>

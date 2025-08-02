@@ -90,11 +90,52 @@ const Ticket = sequelize.define('Ticket', {
       model: 'Users',
       key: 'id'
     }
+  },
+  workflowTypeId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'workflow_types',
+      key: 'id'
+    }
+  },
+  currentStatusId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'workflow_statuses',
+      key: 'id'
+    }
   }
 }, {
   timestamps: true,
   hooks: {
-    beforeCreate: (ticket) => {
+    beforeCreate: async (ticket) => {
+      // Set default workflow if not specified
+      if (!ticket.workflowTypeId) {
+        const { WorkflowType, WorkflowStatus } = require('./index');
+        const defaultWorkflow = await WorkflowType.findOne({
+          where: { name: 'default_support', isActive: true }
+        });
+        
+        if (defaultWorkflow) {
+          ticket.workflowTypeId = defaultWorkflow.id;
+          
+          // Set initial status
+          const initialStatus = await WorkflowStatus.findOne({
+            where: {
+              workflowTypeId: defaultWorkflow.id,
+              isInitial: true,
+              isActive: true
+            }
+          });
+          
+          if (initialStatus) {
+            ticket.currentStatusId = initialStatus.id;
+          }
+        }
+      }
+
       // Calculate SLA deadlines based on type and priority
       const now = moment();
       
@@ -214,5 +255,69 @@ const Ticket = sequelize.define('Ticket', {
     }
   }
 });
+
+// Instance methods for workflow
+Ticket.prototype.getAvailableTransitions = async function(userId) {
+  const workflowService = require('../services/workflowService');
+  return await workflowService.getAvailableTransitions(this.id, userId);
+};
+
+Ticket.prototype.executeTransition = async function(transitionId, userId, options = {}) {
+  const workflowService = require('../services/workflowService');
+  return await workflowService.executeTransition(this.id, transitionId, userId, options);
+};
+
+Ticket.prototype.getCurrentStatusName = function(locale = 'ru') {
+  if (this.currentStatus) {
+    return this.currentStatus.getDisplayName(locale);
+  }
+  return this.status; // fallback to old status field
+};
+
+Ticket.prototype.getWorkflowTypeName = function(locale = 'ru') {
+  if (this.WorkflowType) {
+    return this.WorkflowType.getDisplayName(locale);
+  }
+  return null;
+};
+
+Ticket.prototype.canTransitionTo = async function(targetStatusId, userRole = null) {
+  if (!this.currentStatus) return false;
+  return await this.currentStatus.canTransitionTo(targetStatusId, userRole);
+};
+
+// Static method to get tickets with workflow data
+Ticket.getWithWorkflowData = async function(where = {}, options = {}) {
+  const { WorkflowType, WorkflowStatus, User } = require('./index');
+  
+  return await this.findAll({
+    where,
+    include: [
+      {
+        model: WorkflowType,
+        required: false
+      },
+      {
+        model: WorkflowStatus,
+        as: 'currentStatus',
+        required: false
+      },
+      {
+        model: User,
+        as: 'createdBy',
+        attributes: ['id', 'firstName', 'lastName', 'email'],
+        required: false
+      },
+      {
+        model: User,
+        as: 'assignedTo',
+        attributes: ['id', 'firstName', 'lastName', 'email'],
+        required: false
+      },
+      ...(options.include || [])
+    ],
+    ...options
+  });
+};
 
 module.exports = Ticket;

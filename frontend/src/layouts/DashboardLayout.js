@@ -36,7 +36,8 @@ import {
   Notifications as NotificationsIcon,
   Assessment as ReportIcon,
   LightMode as LightModeIcon,
-  DarkMode as DarkModeIcon
+  DarkMode as DarkModeIcon,
+  AccountTree as WorkflowIcon
 } from '@mui/icons-material';
 
 import { useAuth } from '../contexts/AuthContext';
@@ -220,6 +221,12 @@ const DashboardLayout = ({ children, darkMode, toggleTheme }) => {
       icon: <ReportIcon />,
       path: '/reports',
       roles: ['admin', 'agent']
+    },
+    {
+      text: 'Workflow',
+      icon: <WorkflowIcon />,
+      path: '/workflow-admin',
+      roles: ['admin']
     },
     {
       text: 'Настройки',

@@ -7,10 +7,15 @@ const {
   Comment,
   Attachment,
   TicketHistory,
-  TicketContact
+  TicketContact,
+  WorkflowType,
+  WorkflowStatus,
+  WorkflowTransition,
+  WorkflowExecutionLog
 } = require('../models');
 const { logger } = require('../../config/database');
 const notificationService = require('../services/notificationService');
+const workflowService = require('../services/workflowService');
 
 /**
  * Create a new ticket
@@ -1894,6 +1899,291 @@ exports.getTicketContacts = async (req, res) => {
     });
     res.status(500).json({
       message: 'Error getting contacts',
+      error: process.env.NODE_ENV === 'production' ? {} : error.message
+    });
+  }
+};
+
+/**
+ * Get available workflow transitions for ticket
+ */
+exports.getAvailableTransitions = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    logger.info('🔄 ПОЛУЧЕНИЕ ПЕРЕХОДОВ - Запрос доступных переходов', {
+      ticketId: id,
+      userId: req.user?.id,
+      userRole: req.user?.role
+    });
+    
+    // Get ticket
+    const ticket = await Ticket.findByPk(id, {
+      include: [
+        {
+          model: WorkflowType,
+          required: false
+        },
+        {
+          model: WorkflowStatus,
+          as: 'currentStatus',
+          required: false
+        }
+      ]
+    });
+    
+    if (!ticket) {
+      logger.error('❌ ПОЛУЧЕНИЕ ПЕРЕХОДОВ - Тикет не найден', {
+        ticketId: id,
+        userId: req.user?.id
+      });
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+    
+    // Role-based access control
+    if (req.user.role === 'client' && ticket.createdById !== req.user.id) {
+      logger.warn('❌ ПОЛУЧЕНИЕ ПЕРЕХОДОВ - Доступ запрещен для клиента', {
+        ticketId: id,
+        userId: req.user?.id,
+        ticketCreatedById: ticket.createdById
+      });
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    // Get available transitions
+    const transitions = await workflowService.getAvailableTransitions(id, req.user.id);
+    
+    logger.info('✅ ПОЛУЧЕНИЕ ПЕРЕХОДОВ - Переходы получены', {
+      ticketId: id,
+      transitionsCount: transitions.length,
+      currentStatus: ticket.currentStatus?.getDisplayName('ru'),
+      userId: req.user?.id
+    });
+    
+    res.status(200).json({
+      transitions,
+      currentStatus: ticket.currentStatus,
+      workflowType: ticket.WorkflowType
+    });
+  } catch (error) {
+    logger.error('❌ ПОЛУЧЕНИЕ ПЕРЕХОДОВ - Ошибка получения переходов:', {
+      ticketId: req.params.id,
+      userId: req.user?.id,
+      error: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({
+      message: 'Error getting available transitions',
+      error: process.env.NODE_ENV === 'production' ? {} : error.message
+    });
+  }
+};
+
+/**
+ * Execute workflow transition
+ */
+exports.executeTransition = async (req, res) => {
+  try {
+    const { id, transitionId } = req.params;
+    const { comment, assigneeId, context } = req.body;
+    
+    logger.info('🔄 ВЫПОЛНЕНИЕ ПЕРЕХОДА - Начало процесса', {
+      ticketId: id,
+      transitionId: transitionId,
+      userId: req.user?.id,
+      userRole: req.user?.role,
+      hasComment: !!comment,
+      hasAssignee: !!assigneeId,
+      hasContext: !!context
+    });
+    
+    // Get ticket first for access control
+    const ticket = await Ticket.findByPk(id);
+    
+    if (!ticket) {
+      logger.error('❌ ВЫПОЛНЕНИЕ ПЕРЕХОДА - Тикет не найден', {
+        ticketId: id,
+        userId: req.user?.id
+      });
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+    
+    // Role-based access control
+    if (req.user.role === 'client' && ticket.createdById !== req.user.id) {
+      logger.warn('❌ ВЫПОЛНЕНИЕ ПЕРЕХОДА - Доступ запрещен для клиента', {
+        ticketId: id,
+        userId: req.user?.id,
+        ticketCreatedById: ticket.createdById
+      });
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    // Execute transition
+    const result = await workflowService.executeTransition(
+      id,
+      transitionId,
+      req.user.id,
+      { comment, assigneeId, context }
+    );
+    
+    logger.info('✅ ВЫПОЛНЕНИЕ ПЕРЕХОДА - Переход выполнен успешно', {
+      ticketId: id,
+      transitionId: transitionId,
+      fromStatus: result.conditionsResult?.fromStatus,
+      toStatus: result.ticket?.currentStatus?.getDisplayName('ru'),
+      executionTime: result.executionTime,
+      userId: req.user?.id
+    });
+    
+    res.status(200).json({
+      message: 'Transition executed successfully',
+      ...result
+    });
+  } catch (error) {
+    logger.error('❌ ВЫПОЛНЕНИЕ ПЕРЕХОДА - Ошибка выполнения перехода:', {
+      ticketId: req.params.id,
+      transitionId: req.params.transitionId,
+      userId: req.user?.id,
+      error: error.message,
+      stack: error.stack
+    });
+    
+    // Provide more specific error messages
+    let statusCode = 500;
+    let message = 'Error executing transition';
+    
+    if (error.message.includes('not found')) {
+      statusCode = 404;
+      message = error.message;
+    } else if (error.message.includes('not allowed') || error.message.includes('insufficient_permissions')) {
+      statusCode = 403;
+      message = 'Transition not allowed for current user';
+    } else if (error.message.includes('required') || error.message.includes('Conditions not met')) {
+      statusCode = 400;
+      message = error.message;
+    }
+    
+    res.status(statusCode).json({
+      message,
+      error: process.env.NODE_ENV === 'production' ? {} : error.message
+    });
+  }
+};
+
+/**
+ * Get workflow execution history for ticket
+ */
+exports.getWorkflowHistory = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { page = 1, limit = 20, includeDetails = false } = req.query;
+    
+    logger.info('📜 ИСТОРИЯ WORKFLOW - Запрос истории выполнения', {
+      ticketId: id,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      includeDetails: includeDetails === 'true',
+      userId: req.user?.id,
+      userRole: req.user?.role
+    });
+    
+    // Get ticket first for access control
+    const ticket = await Ticket.findByPk(id);
+    
+    if (!ticket) {
+      logger.error('❌ ИСТОРИЯ WORKFLOW - Тикет не найден', {
+        ticketId: id,
+        userId: req.user?.id
+      });
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+    
+    // Role-based access control
+    if (req.user.role === 'client' && ticket.createdById !== req.user.id) {
+      logger.warn('❌ ИСТОРИЯ WORKFLOW - Доступ запрещен для клиента', {
+        ticketId: id,
+        userId: req.user?.id,
+        ticketCreatedById: ticket.createdById
+      });
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    
+    // Get workflow execution history
+    const { count, rows: history } = await WorkflowExecutionLog.findAndCountAll({
+      where: { ticketId: id },
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'firstName', 'lastName', 'email'],
+          required: false
+        },
+        {
+          model: WorkflowStatus,
+          as: 'fromStatus',
+          attributes: ['id', 'name', 'displayName', 'color'],
+          required: false
+        },
+        {
+          model: WorkflowStatus,
+          as: 'toStatus',
+          attributes: ['id', 'name', 'displayName', 'color'],
+          required: false
+        },
+        {
+          model: WorkflowTransition,
+          as: 'transition',
+          attributes: ['id', 'name', 'displayName', 'icon', 'color'],
+          required: false
+        }
+      ],
+      order: [['createdAt', 'DESC']],
+      limit: parseInt(limit),
+      offset: offset
+    });
+    
+    logger.info('✅ ИСТОРИЯ WORKFLOW - История получена', {
+      ticketId: id,
+      historyCount: history.length,
+      totalCount: count,
+      userId: req.user?.id
+    });
+    
+    res.status(200).json({
+      history: history.map(entry => ({
+        id: entry.id,
+        fromStatus: entry.fromStatus,
+        toStatus: entry.toStatus,
+        transition: entry.transition,
+        user: entry.user,
+        executionDuration: entry.executionDuration,
+        success: entry.success,
+        errorMessage: entry.errorMessage,
+        createdAt: entry.createdAt,
+        ...(includeDetails === 'true' && {
+          conditionsResult: entry.conditionsResult,
+          actionsResult: entry.actionsResult,
+          metadata: entry.metadata
+        })
+      })),
+      pagination: {
+        total: count,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(count / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    logger.error('❌ ИСТОРИЯ WORKFLOW - Ошибка получения истории:', {
+      ticketId: req.params.id,
+      userId: req.user?.id,
+      error: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({
+      message: 'Error getting workflow history',
       error: process.env.NODE_ENV === 'production' ? {} : error.message
     });
   }
